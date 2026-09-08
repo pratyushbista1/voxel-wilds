@@ -20,6 +20,7 @@ const page = await browser.newPage({
   viewport: { width: 1440, height: 900 },
   deviceScaleFactor: 1,
 });
+page.setDefaultTimeout(120000);
 const errors = [],
   warnings = [],
   failedRequests = [],
@@ -54,10 +55,14 @@ async function playing() {
       document.pointerLockElement === document.getElementById('game-canvas')
   );
 }
-async function key(code, ms) {
+async function key(code, simulationMs) {
   await page.keyboard.down(code);
-  await page.waitForTimeout(ms);
-  await page.keyboard.up(code);
+  try {
+    const until = (await state()).playTime + simulationMs / 1000;
+    await page.waitForFunction((until) => window.__wildsTest.game.playTime >= until, until);
+  } finally {
+    await page.keyboard.up(code);
+  }
 }
 async function clickButton(button) {
   await page.mouse.down({ button });
@@ -94,6 +99,16 @@ let failure = null;
 try {
   await page.goto(base + '/?test=1');
   await page.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
+  if (process.env.CI) {
+    await page.evaluate(() => {
+      const g = window.__wildsTest.game;
+      g.settings.distance = 3;
+      g.settings.shadows = false;
+      g.renderer.setPixelRatio(0.5);
+      g.syncSettingsUI();
+      g.applySettings();
+    });
+  }
   assert.equal((await state()).models.length, 7);
   await shot('title-screen');
   check('Title, terrain and all seven Blender models load');
@@ -247,9 +262,11 @@ try {
     g.storage.furnace.slots[1] = { id: 91, count: 1 };
     g.inventoryChanged();
   });
-  await page.waitForFunction(() => window.__wildsTest.game.storage.furnace.slots[2]?.id === 92, {
-    timeout: 20000,
-  });
+  await page.waitForFunction(
+    () => window.__wildsTest.game.storage.furnace.slots[2]?.id === 92,
+    undefined,
+    { timeout: 300000 }
+  );
   await shot('furnace');
   await slot('furnace', 2).click({ modifiers: ['Shift'] });
   assert.ok((await state()).inventory[92] >= 1);
@@ -266,8 +283,8 @@ try {
     window.__wildsTest.setBlock(0, 57, -3, 0);
   });
   await page.mouse.down({ button: 'right' });
-  await page.waitForFunction(() => window.__wilds.inspect().player.hunger === 14, {
-    timeout: 5000,
+  await page.waitForFunction(() => window.__wilds.inspect().player.hunger === 14, undefined, {
+    timeout: 120000,
   });
   await page.mouse.up({ button: 'right' });
   assert.equal((await state()).player.hunger, 14);
@@ -301,6 +318,8 @@ try {
   await pause();
   await page.locator('#pause-settings').click();
   await page.locator('#show-fps').check();
+  await page.locator('#shadows').check();
+  assert.equal(await page.evaluate(() => window.__wildsTest.game.renderer.shadowMap.enabled), true);
   await page.locator('#shadows').uncheck();
   assert.equal(
     await page.evaluate(() => window.__wildsTest.game.renderer.shadowMap.enabled),
