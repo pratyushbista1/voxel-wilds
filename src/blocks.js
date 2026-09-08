@@ -24,6 +24,22 @@ export const B = Object.freeze({
   BEDROCK: 22,
   FURNACE: 23,
   TORCH: 24,
+  BED: 25,
+  OBSIDIAN: 33,
+  PORTAL_X: 34,
+  PORTAL_Z: 35,
+  NETHERRACK: 36,
+  LAVA: 37,
+  NETHER_BRICKS: 38,
+  BLACKSTONE: 39,
+  GOLD_BLOCK: 40,
+  CHEST: 41,
+  SOUL_SAND: 42,
+  GLOWSTONE: 43,
+  GRAVEL: 44,
+  NETHER_GOLD: 45,
+  NETHER_WART: 46,
+  SPAWNER: 47,
 });
 
 export const BLOCKS = {
@@ -154,6 +170,113 @@ export const BLOCKS = {
     category: 'Decoration',
   },
 };
+for (let facing = 0; facing < 4; facing++) {
+  for (let head = 0; head < 2; head++) {
+    BLOCKS[25 + facing * 2 + head] = {
+      name: 'Red Bed',
+      color: '#b93f43',
+      tile: 25,
+      hardness: 0.3,
+      bed: true,
+      bedHead: !!head,
+      facing,
+      height: 0.5625,
+      transparent: true,
+      model: head ? 'bed_head' : 'bed_foot',
+      drop: 25,
+      stackSize: 1,
+      hidden: facing !== 0 || head !== 0,
+      category: 'Supplies',
+    };
+  }
+}
+Object.assign(BLOCKS, {
+  33: { name: 'Obsidian', color: '#33263f', tile: 26, hardness: 10, tier: 4, category: 'Building' },
+  34: {
+    name: 'Nether Portal',
+    color: '#b056e3',
+    tile: 27,
+    hardness: Infinity,
+    solid: false,
+    transparent: true,
+    model: 'portal_x',
+    hidden: true,
+  },
+  35: {
+    name: 'Nether Portal',
+    color: '#b056e3',
+    tile: 27,
+    hardness: Infinity,
+    solid: false,
+    transparent: true,
+    model: 'portal_z',
+    hidden: true,
+  },
+  36: { name: 'Netherrack', color: '#8e3938', tile: 28, hardness: 0.4, category: 'Earth' },
+  37: {
+    name: 'Lava',
+    color: '#f98428',
+    tile: 29,
+    hardness: Infinity,
+    solid: false,
+    transparent: true,
+    liquid: true,
+    category: 'Nature',
+  },
+  38: { name: 'Nether Bricks', color: '#45272e', tile: 30, hardness: 2, category: 'Building' },
+  39: { name: 'Blackstone', color: '#423c46', tile: 31, hardness: 1.5, category: 'Building' },
+  40: {
+    name: 'Block of Gold',
+    color: '#edc94f',
+    tile: 32,
+    hardness: 3,
+    tier: 3,
+    category: 'Building',
+  },
+  41: {
+    name: 'Chest',
+    color: '#af773c',
+    tile: 33,
+    hardness: 2.5,
+    model: 'chest',
+    height: 0.875,
+    transparent: true,
+    category: 'Building',
+  },
+  42: { name: 'Soul Sand', color: '#655145', tile: 34, hardness: 0.5, category: 'Earth' },
+  43: { name: 'Glowstone', color: '#f7d585', tile: 35, hardness: 0.3, category: 'Decoration' },
+  44: { name: 'Gravel', color: '#a29991', tile: 36, hardness: 0.6, category: 'Earth' },
+  45: {
+    name: 'Nether Gold Ore',
+    color: '#bc7046',
+    tile: 37,
+    hardness: 1,
+    tier: 1,
+    drop: 138,
+    dropCount: 3,
+    category: 'Earth',
+  },
+  46: {
+    name: 'Nether Wart',
+    color: '#bb333d',
+    tile: 38,
+    hardness: 0.1,
+    solid: false,
+    transparent: true,
+    model: 'wart',
+    category: 'Nature',
+  },
+  47: {
+    name: 'Blaze Spawner',
+    color: '#393c48',
+    tile: 39,
+    hardness: 5,
+    drop: 0,
+    model: 'spawner',
+    transparent: true,
+    category: 'Building',
+  },
+});
 for (const [id, block] of Object.entries(BLOCKS)) {
   block.id = Number(id);
   block.solid ??= true;
@@ -274,9 +397,70 @@ export const ITEMS = {
     category: 'Equipment',
   },
 };
+Object.assign(ITEMS, {
+  120: { name: 'Raw Mutton', color: '#c66062', food: 2, saturation: 0.3, meat: true },
+  121: { name: 'Cooked Mutton', color: '#996141', food: 6, saturation: 0.8, meat: true },
+  122: { name: 'Raw Beef', color: '#bb4247', food: 3, saturation: 0.3, meat: true },
+  123: { name: 'Steak', color: '#965137', food: 8, saturation: 0.8, meat: true },
+  124: { name: 'Raw Porkchop', color: '#e5908e', food: 3, saturation: 0.3, meat: true },
+  125: { name: 'Cooked Porkchop', color: '#c08b60', food: 8, saturation: 0.8, meat: true },
+  126: { name: 'Raw Chicken', color: '#ecc5ae', food: 2, saturation: 0.3, meat: true },
+  127: { name: 'Cooked Chicken', color: '#c28a4a', food: 6, saturation: 0.6, meat: true },
+  128: { name: 'Rotten Flesh', color: '#997347', food: 4, saturation: 0.1, meat: true },
+  129: { name: 'Flint', color: '#51545b', category: 'Materials' },
+  130: {
+    name: 'Flint and Steel',
+    color: '#b8bec3',
+    durability: 64,
+    igniter: true,
+    category: 'Tools',
+  },
+  131: { name: 'Gold Ingot', color: '#efd069', category: 'Materials' },
+  132: { name: 'Leather', color: '#a76e40', category: 'Materials' },
+  133: { name: 'Feather', color: '#f0ead9', category: 'Materials' },
+  134: { name: 'Bone', color: '#dcd9b8', category: 'Materials' },
+  135: { name: 'Blaze Rod', color: '#f4b13c', category: 'Materials' },
+  137: { name: 'Quartz', color: '#ebd9ca', category: 'Materials' },
+  138: { name: 'Gold Nugget', color: '#edc65a', category: 'Materials' },
+  139: { name: 'Nether Brick', color: '#5c3338', category: 'Materials' },
+  150: {
+    name: 'Golden Helmet',
+    color: '#efc84f',
+    armor: 0,
+    protection: 2,
+    durability: 77,
+    gold: true,
+    category: 'Equipment',
+  },
+});
+for (const [offset, kind] of [
+  'zombie',
+  'cow',
+  'pig',
+  'sheep',
+  'chicken',
+  'blaze',
+  'piglin',
+  'skeleton',
+  'creeper',
+  'spider',
+  'brute',
+  'wither_skeleton',
+].entries()) {
+  ITEMS[160 + offset] = {
+    name: `${kind.replaceAll('_', ' ')} spawn egg`,
+    color: '#8aa565',
+    spawn: kind,
+    category: 'Mobs',
+  };
+}
+for (const [id, item] of Object.entries(ITEMS)) {
+  item.id = Number(id);
+  item.category ??= item.food ? 'Supplies' : 'Materials';
+}
 export const CREATIVE_ITEMS = Object.keys(ITEMS)
   .map(Number)
-  .filter((id) => id !== B.AIR && id !== B.BEDROCK);
+  .filter((id) => id !== B.AIR && id !== B.BEDROCK && !ITEMS[id].hidden);
 
 export function isSolid(id) {
   return Boolean(BLOCKS[id]?.solid);

@@ -97,6 +97,7 @@ export class ChunkRenderer {
       specular: 0xb7dbd2,
       depthWrite: false,
     });
+    this.glowMaterial = new THREE.MeshBasicMaterial({ map: texture, vertexColors: true });
   }
   update(x, z, radius = this.radius, all = false) {
     const cx = Math.floor(x / CHUNK),
@@ -144,7 +145,7 @@ export class ChunkRenderer {
       oz = cz * CHUNK,
       key = chunk.key;
     this.remove(key);
-    const buckets = [0, 1, 2].map(() => ({
+    const buckets = [0, 1, 2, 3].map(() => ({
       positions: [],
       normals: [],
       colors: [],
@@ -168,11 +169,15 @@ export class ChunkRenderer {
             const model = this.assets.make(block.model);
             if (model) {
               model.position.set(x + 0.5, y, z + 0.5);
+              if (block.bed) model.rotation.y = (-block.facing * Math.PI) / 2;
               group.add(model);
             }
             continue;
           }
-          const bucket = buckets[id === B.WATER ? 2 : id === B.GLASS ? 1 : 0];
+          const bucket =
+            buckets[
+              id === B.WATER ? 2 : id === B.GLASS ? 1 : id === B.LAVA || id === B.GLOWSTONE ? 3 : 0
+            ];
           for (let f = 0; f < 6; f++) {
             const face = FACES[f],
               n = face.n,
@@ -221,7 +226,10 @@ export class ChunkRenderer {
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(b.uvs, 2));
       geo.setIndex(b.indices);
       geo.computeBoundingSphere();
-      const mesh = new THREE.Mesh(geo, [this.material, this.glassMaterial, this.waterMaterial][i]);
+      const mesh = new THREE.Mesh(
+        geo,
+        [this.material, this.glassMaterial, this.waterMaterial, this.glowMaterial][i]
+      );
       mesh.receiveShadow = true;
       mesh.castShadow = i === 0;
       mesh.renderOrder = i;
@@ -245,5 +253,6 @@ export class ChunkRenderer {
     this.material.dispose();
     this.glassMaterial.dispose();
     this.waterMaterial.dispose();
+    this.glowMaterial.dispose();
   }
 }

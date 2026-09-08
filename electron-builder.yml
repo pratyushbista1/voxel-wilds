@@ -1,7 +1,7 @@
 appId: io.voxelwilds.game
 productName: Voxel Wilds
 directories:
-  output: release
+  output: release/${version}
   buildResources: build
 asar: true
 extraResources:

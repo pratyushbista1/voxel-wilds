@@ -2,9 +2,9 @@ import { ITEMS } from './blocks.js';
 import { matchRecipe, FUEL } from './recipes.js';
 
 export const BAG_SIZE = 36;
-export const maxStack = (id) => (ITEMS[id]?.durability ? 1 : 64);
+export const maxStack = (id) => ITEMS[id]?.stackSize || (ITEMS[id]?.durability ? 1 : 64);
 export const cloneStack = (stack) => (stack ? { ...stack } : null);
-export const stackable = (a, b) => a && b && a.id === b.id && !ITEMS[a.id]?.durability;
+export const stackable = (a, b) => a && b && a.id === b.id && maxStack(a.id) > 1;
 
 export function makeStack(id, count = 1, durability = ITEMS[id]?.durability) {
   if (!ITEMS[id] || !id || count <= 0) return null;
@@ -76,6 +76,7 @@ export class Inventory {
     return bag;
   }
   region(name) {
+    if (name === 'chest') return this.chest;
     return name === 'bag'
       ? this.slots
       : name === 'grid'
@@ -179,6 +180,20 @@ export class Inventory {
     const list = this.region(name),
       stack = list?.[index];
     if (!stack) return false;
+    if (name === 'bag' && this.chest) {
+      const rest = cloneStack(stack);
+      for (let pass = 0; pass < 2; pass++)
+        for (let i = 0; i < this.chest.length && rest.count; i++) {
+          const target = this.chest[i];
+          if (pass === 0 ? !stackable(target, rest) : !!target) continue;
+          const count = Math.min(rest.count, maxStack(rest.id) - (target?.count || 0));
+          if (target) target.count += count;
+          else this.chest[i] = { ...rest, count };
+          rest.count -= count;
+        }
+      list[index] = rest.count ? rest : null;
+      return rest.count !== stack.count;
+    }
     const armorSlot = ITEMS[stack.id]?.armor;
     if (name === 'bag' && armorSlot !== undefined && !this.armor[armorSlot]) {
       this.armor[armorSlot] = stack;

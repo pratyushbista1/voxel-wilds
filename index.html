@@ -22,6 +22,12 @@
     <div id="vignette"></div>
     <div id="underwater"></div>
     <div id="damage-flash"></div>
+    <div id="portal-overlay"></div>
+    <div id="fire-overlay" class="hidden"></div>
+    <div id="sleep-overlay" class="hidden">
+      <h2>Sleeping</h2>
+      <p>Press Esc to leave the bed</p>
+    </div>
     <div id="loading" class="loading-screen">
       <img src="/favicon.svg" alt="" width="58" height="58" />
       <p class="eyebrow">VOXEL WILDS</p>
@@ -204,8 +210,7 @@
         <button id="pause-settings" class="button secondary">Settings</button
         ><button id="pause-guide" class="button secondary">Controls</button>
       </div>
-      <button id="respawn-button" class="button secondary full-width">Return to spawn</button
-      ><button id="save-quit-button" class="button subtle full-width">
+      <button id="save-quit-button" class="button subtle full-width">
         Save & return to title <span>↗</span>
       </button>
       <p class="modal-footnote" id="pause-save-status">Your progress is saved automatically.</p>
@@ -230,11 +235,11 @@
         class="range-label"
         for="view-distance"
         >View distance <output id="view-distance-value">5 chunks</output></label
-      ><input id="view-distance" type="range" min="3" max="8" value="5" /><label
+      ><input id="view-distance" type="range" min="3" max="12" value="5" /><label
         class="range-label"
         for="fov"
         >Field of view <output id="fov-value">75°</output></label
-      ><input id="fov" type="range" min="60" max="100" value="75" /><label
+      ><input id="fov" type="range" min="60" max="110" value="75" /><label
         class="range-label"
         for="volume"
         >Sound volume <output id="volume-value">40%</output></label
@@ -243,10 +248,64 @@
           class="toggle"
         ></span></label
       ><label class="toggle-row"
-        >Show FPS & diagnostics<input id="show-fps" type="checkbox" /><span
-          class="toggle"
-        ></span></label
-      ><button id="fullscreen-button" class="button secondary full-width">
+        >Show FPS & diagnostics<input id="show-fps" type="checkbox" /><span class="toggle"></span
+      ></label>
+      <label class="range-label" for="max-fps">Maximum FPS</label>
+      <select id="max-fps">
+        <option value="30">30</option>
+        <option value="60" selected>60</option>
+        <option value="90">90</option>
+        <option value="120">120</option>
+        <option value="144">144</option>
+        <option value="165">165</option>
+        <option value="240">240</option>
+        <option value="0">Unlimited</option>
+      </select>
+      <p class="modal-footnote">
+        Unlimited removes the game cap. Browser, display and hardware limits can still apply.
+      </p>
+      <label class="range-label" for="render-scale"
+        >Render scale <output id="render-scale-value">100%</output></label
+      ><input id="render-scale" type="range" min="25" max="150" step="5" value="100" />
+      <label class="range-label" for="brightness"
+        >Brightness <output id="brightness-value">100%</output></label
+      ><input id="brightness" type="range" min="25" max="150" step="5" value="100" />
+      <label class="range-label" for="fog-distance"
+        >Fog distance <output id="fog-distance-value">100%</output></label
+      ><input id="fog-distance" type="range" min="60" max="140" step="5" value="100" />
+      <label class="range-label" for="entity-distance"
+        >Mob distance <output id="entity-distance-value">64 blocks</output></label
+      ><input id="entity-distance" type="range" min="24" max="96" step="8" value="64" />
+      <label class="range-label" for="shadow-size">Shadow quality</label
+      ><select id="shadow-size">
+        <option value="512">Low</option>
+        <option value="1024">Medium</option>
+        <option value="2048" selected>High</option>
+        <option value="4096">Ultra</option>
+      </select>
+      <label class="range-label" for="particles">Particles</label
+      ><select id="particles">
+        <option value="0">None</option>
+        <option value="60">Reduced</option>
+        <option value="180" selected>All</option>
+      </select>
+      <label class="range-label" for="difficulty">Difficulty</label
+      ><select id="difficulty">
+        <option value="peaceful">Peaceful</option>
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+      </select>
+      <label class="toggle-row"
+        >Clouds<input id="clouds" type="checkbox" checked /><span class="toggle"></span
+      ></label>
+      <label class="toggle-row"
+        >View bobbing<input id="view-bobbing" type="checkbox" checked /><span class="toggle"></span
+      ></label>
+      <label class="toggle-row"
+        >Vignette<input id="vignette-setting" type="checkbox" checked /><span class="toggle"></span
+      ></label>
+      <button id="fullscreen-button" class="button secondary full-width">
         ⛶ &nbsp; Toggle fullscreen
       </button>
       <p class="modal-footnote">Changes apply immediately. Press F11 for fullscreen.</p>
@@ -316,7 +375,7 @@
           <h3>Inventory & Survival</h3>
           <p>
             Right click to split a stack or place one item. Shift-click transfers stacks; dragging
-            distributes them. Tools wear out and break. Hold right click with berries to eat. Health
+            distributes them. Tools wear out and break. Hold right click with food to eat. Health
             regenerates when your food bar is nearly full. Falling, drowning and enemies cause
             damage.
           </p>
@@ -326,6 +385,20 @@
             Make a furnace with eight cobblestone around an empty center. Put raw iron above coal to
             smelt ingots. Craft armor and a sword at a table. Equip a shield and hold right click to
             block attacks. On death, items drop where you fell and remain for five minutes.
+          </p>
+          <span class="guide-number">04</span>
+          <h3>Beds & Sleeping</h3>
+          <p>
+            Three wool above three planks make a bed. Place it on two clear blocks and right-click
+            to set your respawn point. Sleep at night when no monsters are nearby to reach dawn.
+            Death respawns you automatically after three seconds, at your bed or the world spawn.
+          </p>
+          <span class="guide-number">05</span>
+          <h3>The Nether</h3>
+          <p>
+            Make a 4-wide, 5-high obsidian frame, then ignite its inside edge with flint and steel.
+            Stand inside to travel. Find treasure and mobs in fortresses and bastions. Wear gold to
+            avoid provoking ordinary piglins. Beds explode in the Nether.
           </p>
           <div class="guide-note">
             Creative provides unlimited blocks, flight and no damage. In Survival, inventory screens
@@ -368,8 +441,11 @@
               <option>Decoration</option>
               <option>Tools</option>
               <option>Equipment</option>
-              <option>Materials</option></select
-            ><input
+              <option>Materials</option>
+              <option>Supplies</option>
+              <option>Mobs</option>
+            </select>
+            <input
               id="creative-search"
               placeholder="Search items..."
               aria-label="Search items"
@@ -404,7 +480,7 @@
       <h2 id="death-title">You Died</h2>
       <p id="death-reason">Your health reached zero.</p>
       <p class="modal-footnote">Your dropped items remain for five minutes.</p>
-      <button id="death-respawn" class="button primary full-width">Respawn</button>
+      <p id="death-countdown">Respawning in 3...</p>
     </section>
     <div id="fatal-error" class="hidden">
       <h2>Unable to start the game</h2>

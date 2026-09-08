@@ -1,4 +1,5 @@
 import { B, BLOCKS, isSolid } from './blocks.js';
+import { decorateNether } from './structures.js';
 
 export const CHUNK = 16,
   HEIGHT = 72,
@@ -32,7 +33,8 @@ const mod = (n, m) => ((n % m) + m) % m;
 export const index = (x, y, z) => x + z * CHUNK + y * CHUNK * CHUNK;
 
 export class World {
-  constructor(seed = 'wildflower', edits = []) {
+  constructor(seed = 'wildflower', edits = [], dimension = 'overworld') {
+    this.dimension = dimension === 'nether' ? 'nether' : 'overworld';
     this.seed = String(seed).slice(0, 64);
     this.seedHash = seedNumber(seed);
     this.chunks = new Map();
@@ -52,6 +54,12 @@ export class World {
   }
   terrain(x, z) {
     const s = this.seedHash;
+    if (this.dimension === 'nether') {
+      if (Math.hypot(x, z) < 12) return 24;
+      return Math.floor(
+        15 + noise(x / 38, z / 38, s + 810) * 15 + noise(x / 12, z / 12, s + 819) * 3
+      );
+    }
     const broad = noise(x / 85, z / 85, s) * 14;
     const detail = noise(x / 23, z / 23, s + 7) * 5 + noise(x / 9, z / 9, s + 12) * 1.8;
     const distance = Math.hypot(x + 3, z - 3);
@@ -67,6 +75,10 @@ export class World {
     return Math.max(6, Math.min(59, Math.floor(h)));
   }
   biome(x, z) {
+    if (this.dimension === 'nether')
+      return noise(x / 65, z / 65, this.seedHash + 33) > 0.62
+        ? 'Soul sand valley'
+        : 'Nether wastes';
     const h = this.terrain(x, z);
     return h >= 42
       ? 'Highlands'
@@ -82,6 +94,36 @@ export class World {
     const data = new Uint8Array(CHUNK * CHUNK * HEIGHT);
     const chunk = { cx, cz, key, data, decorations: [] };
     this.chunks.set(key, chunk);
+    if (this.dimension === 'nether') {
+      for (let z = 0; z < CHUNK; z++)
+        for (let x = 0; x < CHUNK; x++) {
+          const wx = cx * CHUNK + x,
+            wz = cz * CHUNK + z,
+            h = this.terrain(wx, wz);
+          for (let y = 0; y < HEIGHT; y++) {
+            let id = B.AIR;
+            if (y === 0 || y === HEIGHT - 1) id = B.BEDROCK;
+            else if (
+              y <= h ||
+              y >= 66 - Math.floor(noise(wx / 13, wz / 13, this.seedHash + 89) * 5)
+            ) {
+              id = B.NETHERRACK;
+              const ore = hash(wx + y * 37, wz - y * 11, this.seedHash + 800);
+              if (ore > 0.978) id = y > 50 ? B.GLOWSTONE : B.NETHER_GOLD;
+              if (y === h && this.biome(wx, wz) === 'Soul sand valley') id = B.SOUL_SAND;
+            } else if (y <= 18) id = B.LAVA;
+            data[index(x, y, z)] = id;
+          }
+        }
+      decorateNether(cx, cz, (x, y, z, id) => {
+        if (y > 0 && y < HEIGHT - 1) data[index(x - cx * CHUNK, y, z - cz * CHUNK)] = id;
+      });
+      for (const [editKey, id] of this.editChunks.get(key) || []) {
+        const [x, y, z] = editKey.split(',').map(Number);
+        data[index(mod(x, CHUNK), y, mod(z, CHUNK))] = id;
+      }
+      return chunk;
+    }
     for (let z = 0; z < CHUNK; z++)
       for (let x = 0; x < CHUNK; x++) {
         const wx = cx * CHUNK + x,
@@ -106,6 +148,8 @@ export class World {
               if (y < 16 && ore > 0.985) id = B.CRYSTAL_ORE;
               else if (y < 27 && ore > 0.963) id = B.IRON_ORE;
               else if (ore > 0.943) id = B.COAL_ORE;
+              else if (y < 12 && ore > 0.925) id = B.OBSIDIAN;
+              else if (ore < 0.024) id = B.GRAVEL;
             }
           }
           data[index(x, y, z)] = id;
@@ -198,6 +242,17 @@ export class World {
     return true;
   }
   surface(x, z) {
+    if (this.dimension === 'nether') {
+      for (let y = 49; y > 0; y--) {
+        if (
+          isSolid(this.get(x, y, z)) &&
+          !isSolid(this.get(x, y + 1, z)) &&
+          !isSolid(this.get(x, y + 2, z))
+        )
+          return y + 1;
+      }
+      return 19;
+    }
     for (let y = HEIGHT - 1; y >= 0; y--) {
       const b = this.get(x, y, z);
       if (isSolid(b) && b !== B.LEAVES && b !== B.LOG) return y + 1;
@@ -280,11 +335,15 @@ export function collides(world, x, y, z, radius = 0.29, height = 1.78) {
   for (let iy = Math.floor(y + 0.001); iy <= Math.floor(y + height - 0.001); iy++)
     for (let iz = Math.floor(z - radius + 0.001); iz <= Math.floor(z + radius - 0.001); iz++)
       for (let ix = Math.floor(x - radius + 0.001); ix <= Math.floor(x + radius - 0.001); ix++)
-        if (isSolid(world.get(ix, iy, iz))) return true;
+        if (
+          isSolid(world.get(ix, iy, iz)) &&
+          y + 0.001 < iy + (BLOCKS[world.get(ix, iy, iz)].height || 1)
+        )
+          return true;
   return false;
 }
 
-export function moveBody(world, position, velocity, dt, fly = false) {
+export function moveBody(world, position, velocity, dt, fly = false, radius = 0.29, height = 1.78) {
   const result = { grounded: false, impact: 0 };
   // Small substeps prevent sprinting, low frame rates and long falls tunnelling.
   const steps = Math.max(
@@ -299,19 +358,19 @@ export function moveBody(world, position, velocity, dt, fly = false) {
         amount = (velocity[axis] * dt) / steps;
       if (!amount) continue;
       position[axis] += amount;
-      if (collides(world, position.x, position.y, position.z)) {
+      if (collides(world, position.x, position.y, position.z, radius, height)) {
         position[axis] = old;
         let low = 0,
           high = 1;
         for (let attempt = 0; attempt < 10; attempt++) {
           const fraction = (low + high) / 2;
           position[axis] = old + amount * fraction;
-          if (collides(world, position.x, position.y, position.z)) high = fraction;
+          if (collides(world, position.x, position.y, position.z, radius, height)) high = fraction;
           else low = fraction;
         }
         position[axis] = old + amount * low;
         if (axis === 'y' && amount < 0) {
-          position.y = Math.ceil(position.y);
+          position.y = Math.ceil(position.y * 16) / 16;
           result.grounded = true;
           result.impact = Math.min(result.impact, velocity.y);
         }

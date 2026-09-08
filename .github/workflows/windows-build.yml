@@ -21,14 +21,15 @@ jobs:
       - name: Test packaged app
         shell: pwsh
         run: |
-          $env:VOXEL_PACKAGED_EXE = Join-Path $PWD 'release/win-unpacked/Voxel Wilds.exe'
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $env:VOXEL_PACKAGED_EXE = Join-Path $PWD "release/$version/win-unpacked/Voxel Wilds.exe"
           npm run test:desktop
       - run: npm run test:portable
       - uses: actions/upload-artifact@v6
         with:
           name: Voxel-Wilds-Windows
           path: |
-            release/*.exe
-            release/SHA256SUMS.txt
-            release/README.txt
+            release/*/*.exe
+            release/*/SHA256SUMS.txt
+            release/*/README.txt
           retention-days: 14

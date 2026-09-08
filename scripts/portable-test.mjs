@@ -10,7 +10,10 @@ await mkdir(path.join(ROOT, '.cache'), { recursive: true });
 const testDir = await mkdtemp(path.join(ROOT, '.cache', 'portable-test-'));
 const { version } = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
 const executable = path.join(testDir, 'Voxel Wilds Portable.exe');
-await copyFile(path.join(ROOT, 'release', `Voxel-Wilds-Portable-${version}.exe`), executable);
+await copyFile(
+  path.join(ROOT, 'release', version, `Voxel-Wilds-Portable-${version}.exe`),
+  executable
+);
 const probe = net.createServer();
 await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
@@ -50,7 +53,8 @@ try {
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const page = browser.contexts()[0].pages()[0];
   await page.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
-  assert.equal(await page.evaluate(() => window.__wilds.inspect().models.length), 7);
+  assert.equal(await page.evaluate(() => window.__wilds.inspect().models.length), 19);
+  assert.equal(await page.locator('#death-respawn, #respawn-button').count(), 0);
   await page.evaluate(() =>
     window.__wildsTest.game.create('Portable test', 'portable-seed', 'survival')
   );
@@ -71,6 +75,7 @@ try {
   const saveDir = path.join(testDir, 'userdata', 'saves');
   const name = (await readdir(saveDir)).find((n) => n.endsWith('.json'));
   const saved = JSON.parse(await readFile(path.join(saveDir, name), 'utf8'));
+  assert.equal(saved.version, 3);
   assert.equal(saved.inventoryData.slots[0].durability, 29);
   assert.equal(saved.player.health, 17);
   await writeFile(

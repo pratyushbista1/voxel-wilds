@@ -5,7 +5,7 @@ import { moveBody, raycast, collides, HEIGHT } from './world.js';
 export function updatePlayer(g, dt) {
   const p = g.player,
     k = g.keys,
-    input = !g.ui.modal;
+    input = !g.ui.modal && !g.systems.sleepTimer && !g.systems.transition;
   g.damageCooldown = Math.max(0, g.damageCooldown - dt);
   g.actionCooldown = Math.max(0, g.actionCooldown - dt);
   g.jumpBuffer = Math.max(0, g.jumpBuffer - dt);
@@ -29,7 +29,7 @@ export function updatePlayer(g, dt) {
     g.buttons.has(2) &&
     (held?.shield || ITEMS[g.storage.offhand[0]?.id]?.shield) &&
     !held?.food;
-  const speed = p.flying
+  let speed = p.flying
     ? sprint
       ? 17
       : 10
@@ -42,6 +42,8 @@ export function updatePlayer(g, dt) {
           : sprint
             ? 6.6
             : 4.3;
+  if (g.world.get(p.x, p.y - 0.05, p.z) === B.SOUL_SAND) speed *= 0.45;
+  if (g.world.get(p.x, p.y + 0.2, p.z) === B.LAVA) speed *= 0.3;
   const vx = ((Math.cos(p.yaw) * ix - Math.sin(p.yaw) * iz) / length) * speed;
   const vz = ((-Math.sin(p.yaw) * ix - Math.cos(p.yaw) * iz) / length) * speed;
   const acceleration = p.grounded || p.flying ? 18 : 9;
@@ -133,9 +135,14 @@ export function updatePlayer(g, dt) {
       g.sound.play(p.water ? 'water' : 'step');
     }
   }
-  const bob = Math.sin(g.bob * 2) * 0.024 * g.walkBlend;
+  const bob = g.settings.viewBobbing ? Math.sin(g.bob * 2) * 0.024 * g.walkBlend : 0;
   g.camera.position.set(p.x, p.y + p.eyeHeight + bob, p.z);
-  g.camera.rotation.set(p.pitch, p.yaw, Math.sin(g.bob) * 0.002 * g.walkBlend, 'YXZ');
+  g.camera.rotation.set(
+    p.pitch,
+    p.yaw,
+    g.settings.viewBobbing ? Math.sin(g.bob) * 0.002 * g.walkBlend : 0,
+    'YXZ'
+  );
   const fov = g.settings.fov + (sprint && moving ? 4 : 0);
   if (Math.abs(g.camera.fov - fov) > 0.01) {
     g.camera.fov = THREE.MathUtils.damp(g.camera.fov, fov, 7, dt);

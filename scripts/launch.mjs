@@ -26,7 +26,7 @@ let port = null,
   freePort = null;
 for (let candidate = 4173; candidate < 4184; candidate++) {
   const h = await health(candidate);
-  if (h?.app === 'voxel-wilds' && h.root === root && h.version === '1.1.0') {
+  if (h?.app === 'voxel-wilds' && h.root === root && h.version === '1.2.0') {
     port = candidate;
     running = true;
     break;

@@ -5,7 +5,7 @@ export const TILE = 16,
   PAD = 2,
   CELL = 20,
   COLS = 8,
-  ROWS = 4;
+  ROWS = 5;
 const palettes = [
   '#81a84b',
   '#906444',
@@ -32,6 +32,21 @@ const palettes = [
   '#eee4cc',
   '#3e484b',
   '#87918d',
+  '#b83b43',
+  '#34273f',
+  '#9144c5',
+  '#8c393a',
+  '#f2741f',
+  '#482932',
+  '#443e48',
+  '#ebcb56',
+  '#ac773e',
+  '#675247',
+  '#f0d38d',
+  '#a19a92',
+  '#a8663e',
+  '#ad283d',
+  '#3a3c47',
 ];
 export function createAtlas() {
   const canvas = document.createElement('canvas');
@@ -155,6 +170,29 @@ export function createAtlas() {
       rect(4, 11, 8, 2, '#101714');
       rect(3, 8, 10, 1, '#b1bbb5');
     }
+    if (t === 26 || t === 28 || t === 31 || t === 34 || t === 36) {
+      for (let n = 0; n < 13; n++)
+        rect(
+          Math.floor(random() * 14),
+          Math.floor(random() * 14),
+          2,
+          2,
+          t === 26 ? '#584064' : 'rgba(35,15,20,.25)'
+        );
+    }
+    if (t === 30)
+      for (let y = 3; y < 16; y += 4) {
+        rect(0, y, 16, 1, '#261922');
+        for (let x = y % 8 === 3 ? 0 : 4; x < 16; x += 8) rect(x, y - 3, 1, 3, '#261922');
+      }
+    if (t === 29 || t === 35 || t === 37)
+      for (let n = 0; n < 17; n++)
+        rect(Math.floor(random() * 14), Math.floor(random() * 14), 2, 2, '#ffd680');
+    if (t === 32) {
+      rect(1, 1, 14, 1, '#fff098');
+      rect(1, 2, 1, 13, '#ffe88a');
+      rect(2, 14, 13, 1, '#b38d26');
+    }
     for (let p = 1; p <= PAD; p++) {
       ctx.drawImage(canvas, tx, ty, 16, 1, tx, ty - p, 16, 1);
       ctx.drawImage(canvas, tx, ty + 15, 16, 1, tx, ty + 15 + p, 16, 1);
@@ -219,7 +257,34 @@ export function makeIcons(atlas) {
         c.fillRect(x, y, w, h);
       };
       c.save();
-      if (item.tool) {
+      if (item.meat) {
+        square(17, 20, 32, 26, '#f0d4b4');
+        square(12, 23, 36, 18, item.color);
+        square(21, 17, 21, 31, item.color);
+        square(22, 23, 7, 6, '#f2b3a0');
+        square(39, 41, 12, 6, '#eadcc3');
+        square(47, 37, 7, 14, '#eadcc3');
+      } else if (item.bed) {
+        square(9, 31, 47, 13, '#87532c');
+        square(10, 26, 46, 13, '#c13e46');
+        square(38, 24, 16, 8, '#f4e7d6');
+        square(11, 43, 6, 11, '#87532c');
+        square(49, 43, 6, 11, '#87532c');
+      } else if (item.spawn) {
+        square(20, 12, 24, 40, item.color);
+        square(14, 24, 36, 21, item.color);
+        square(21, 19, 8, 9, '#41523a');
+        square(34, 35, 10, 10, '#687843');
+      } else if (item.igniter) {
+        square(15, 18, 7, 29, '#c9d4d6');
+        square(15, 40, 26, 7, '#aab4ba');
+        square(36, 30, 12, 12, '#4f515b');
+      } else if (Number(key) === 41) {
+        square(10, 16, 44, 37, '#765027');
+        square(13, 19, 38, 31, '#b78343');
+        square(10, 29, 44, 4, '#5d422b');
+        square(29, 26, 7, 13, '#d6ceab');
+      } else if (item.tool) {
         c.translate(32, 32);
         c.rotate(0.62);
         square(-3, -18, 6, 43, '#583f2b');

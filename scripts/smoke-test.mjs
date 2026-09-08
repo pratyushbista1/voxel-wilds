@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createGameServer, ROOT } from '../server.mjs';
+import { survivalChecks } from './survival-browser-tests.mjs';
 
 await mkdir(path.join(ROOT, '.cache'), { recursive: true });
 await mkdir(path.join(ROOT, 'artifacts'), { recursive: true });
@@ -82,7 +83,11 @@ async function fixture(block = 3) {
     t.game.actionCooldown = 0;
   }, block);
   await page.waitForFunction(
-    () => window.__wilds.inspect().target?.x === 0 && window.__wilds.inspect().target?.z === -3
+    (block) =>
+      window.__wilds.inspect().target?.x === 0 &&
+      window.__wilds.inspect().target?.z === -3 &&
+      window.__wilds.inspect().target?.id === block,
+    block
   );
 }
 async function pause() {
@@ -104,14 +109,14 @@ try {
       const g = window.__wildsTest.game;
       g.settings.distance = 3;
       g.settings.shadows = false;
-      g.renderer.setPixelRatio(0.5);
+      g.settings.renderScale = 50;
       g.syncSettingsUI();
       g.applySettings();
     });
   }
-  assert.equal((await state()).models.length, 7);
+  assert.equal((await state()).models.length, 19);
   await shot('title-screen');
-  check('Title, terrain and all seven Blender models load');
+  check('Title, terrain and all nineteen Blender models load');
   await page.locator('#new-world-button').click();
   await page.locator('#world-name').fill('Creative test');
   await page.locator('[data-mode="creative"]').click();
@@ -337,10 +342,12 @@ try {
   await page.waitForSelector('#death-modal:not(.hidden)');
   assert.equal(Object.keys((await state()).inventory).length, 0);
   assert.ok(await page.evaluate(() => window.__wildsTest.game.drops.list.length > 0));
-  await page.locator('#death-respawn').click();
+  assert.equal(await page.locator('#death-respawn, #respawn-button').count(), 0);
+  await page.waitForFunction(() => window.__wilds.inspect().player.health === 20);
   await playing();
   assert.equal((await state()).player.health, 20);
-  check('Death drops inventory and respawn restores health');
+  check('Death drops inventory and automatic respawn restores health without a button');
+  await survivalChecks({ page, check, shot, playing, pause, quit, state });
   assert.deepEqual(errors, []);
   assert.deepEqual(failedRequests, []);
   check('No browser errors or failed requests');

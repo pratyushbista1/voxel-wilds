@@ -51,22 +51,30 @@ export class InventoryView {
     const s = this.game.storage,
       kind = this.game.inventoryKind;
     const creative = this.game.mode === 'creative' && kind === 'personal';
+    if (kind === 'chest') this.book = false;
     this.root.classList.toggle('has-book', this.book && !creative && kind !== 'furnace');
     this.root.classList.toggle('is-creative', creative);
     $('recipe-book').classList.toggle('hidden', !this.book || creative || kind === 'furnace');
     $('creative-catalogue').classList.toggle('hidden', !creative);
-    $('recipe-toggle').classList.toggle('hidden', creative || kind === 'furnace');
+    $('recipe-toggle').classList.toggle(
+      'hidden',
+      creative || kind === 'furnace' || kind === 'chest'
+    );
     $('inventory-title').textContent =
-      kind === 'table'
-        ? 'Crafting'
-        : kind === 'furnace'
-          ? 'Furnace'
-          : creative
-            ? 'Creative Inventory'
-            : 'Inventory';
+      kind === 'chest'
+        ? 'Chest'
+        : kind === 'table'
+          ? 'Crafting'
+          : kind === 'furnace'
+            ? 'Furnace'
+            : creative
+              ? 'Creative Inventory'
+              : 'Inventory';
     const area = $('station-area');
     area.className = 'station-area ' + kind;
-    if (kind === 'furnace') {
+    if (kind === 'chest') {
+      area.innerHTML = s.chest.map((stack, i) => this.slot('chest', i, stack)).join('');
+    } else if (kind === 'furnace') {
       const f = s.furnace;
       area.innerHTML = `<div class="furnace-stack">${this.slot('furnace', 0, f.slots[0])}<div class="furnace-flame"><i style="height:${f.burnTotal ? (f.burn / f.burnTotal) * 100 : 0}%">♨</i><span>♨</span></div>${this.slot('furnace', 1, f.slots[1])}</div><div class="craft-arrow"><i style="width:${f.progress * 10}%">➜</i><span>➜</span></div>${this.slot('furnace', 2, f.slots[2], 'output-slot')}`;
     } else {

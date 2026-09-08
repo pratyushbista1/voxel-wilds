@@ -25,7 +25,7 @@ const MIME = {
 };
 const validId = (id) => /^[a-zA-Z0-9_-]{1,64}$/.test(id);
 export function validateSave(data, id) {
-  if (!data || ![1, 2].includes(data.version) || data.id !== id || !validId(id))
+  if (!data || ![1, 2, 3].includes(data.version) || data.id !== id || !validId(id))
     throw Error('Invalid world identity.');
   if (typeof data.name !== 'string' || !data.name.trim() || data.name.length > 48)
     throw Error('World name must be 1-48 characters.');
@@ -94,7 +94,7 @@ export function validateSave(data, id) {
     )
   )
     throw Error('Invalid inventory.');
-  if (data.version === 2) {
+  if (data.version >= 2) {
     const checkStack = (s) => {
       if (s === null) return;
       if (
@@ -105,7 +105,7 @@ export function validateSave(data, id) {
         !ITEMS[s.id] ||
         !Number.isInteger(s.count) ||
         s.count < 1 ||
-        s.count > (ITEMS[s.id].durability ? 1 : 64)
+        s.count > (ITEMS[s.id].stackSize || (ITEMS[s.id].durability ? 1 : 64))
       )
         throw Error('Invalid item stack.');
       if (
@@ -180,6 +180,94 @@ export function validateSave(data, id) {
     for (const key of ['saturation', 'exhaustion'])
       if (!Number.isFinite(data.player[key]) || data.player[key] < 0 || data.player[key] > 30)
         throw Error('Invalid food state.');
+    if (data.version === 3) {
+      const coordinate = (p) =>
+        p &&
+        ['x', 'y', 'z'].every((k) => Number.isFinite(p[k])) &&
+        Math.abs(p.x) <= 1000000 &&
+        Math.abs(p.z) <= 1000000 &&
+        p.y >= 0 &&
+        p.y <= 150;
+      const blockPosition = (p) =>
+        coordinate(p) &&
+        ['x', 'y', 'z'].every((k) => Number.isInteger(p[k])) &&
+        p.y > 0 &&
+        p.y < 72;
+      const dimensions = ['overworld', 'nether'];
+      if (
+        !dimensions.includes(data.dimension) ||
+        !data.dimensions ||
+        Array.isArray(data.dimensions) ||
+        Object.keys(data.dimensions).some((key) => !dimensions.includes(key)) ||
+        !data.dimensions[data.dimension]
+      )
+        throw Error('Invalid dimension state.');
+      if (
+        data.bedSpawn !== null &&
+        (!blockPosition(data.bedSpawn) ||
+          data.bedSpawn.dimension !== 'overworld' ||
+          ![0, 1, 2, 3].includes(data.bedSpawn.facing))
+      )
+        throw Error('Invalid bed spawn.');
+      if (!Array.isArray(data.portalLinks) || data.portalLinks.length > 512)
+        throw Error('Invalid portal links.');
+      for (const link of data.portalLinks)
+        for (const dimension of dimensions) {
+          const p = link?.[dimension];
+          if (
+            !blockPosition(p) ||
+            p.y > 66 ||
+            ![0, 1].includes(p.dx) ||
+            ![0, 1].includes(p.dz) ||
+            p.dx + p.dz !== 1
+          )
+            throw Error('Invalid portal position.');
+        }
+      const kinds = new Set([
+        'fox',
+        'sentinel',
+        ...Object.values(ITEMS)
+          .map((item) => item.spawn)
+          .filter(Boolean),
+      ]);
+      for (const state of Object.values(data.dimensions)) {
+        if (!state || typeof state !== 'object') throw Error('Invalid dimension contents.');
+        validateSave(
+          { ...data, version: 2, edits: state.edits, drops: state.drops, furnaces: state.furnaces },
+          id
+        );
+        if (!Array.isArray(state.mobs) || state.mobs.length > 48) throw Error('Invalid mobs.');
+        for (const m of state.mobs)
+          if (
+            !coordinate(m) ||
+            !kinds.has(m.kind) ||
+            !Number.isFinite(m.health) ||
+            m.health <= 0 ||
+            m.health > 50 ||
+            !Number.isFinite(m.yaw)
+          )
+            throw Error('Invalid mob state.');
+        if (!Array.isArray(state.containers) || state.containers.length > 5000)
+          throw Error('Invalid chests.');
+        for (const entry of state.containers) {
+          if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string')
+            throw Error('Invalid chest position.');
+          const parts = entry[0].split(',').map(Number);
+          if (parts.length !== 3 || !blockPosition({ x: parts[0], y: parts[1], z: parts[2] }))
+            throw Error('Invalid chest position.');
+          slots(entry[1], 27);
+        }
+        if (
+          !Array.isArray(state.mobSites) ||
+          state.mobSites.length > 10000 ||
+          state.mobSites.some((s) => typeof s !== 'string' || s.length > 64)
+        )
+          throw Error('Invalid structure state.');
+      }
+      for (const key of ['edits', 'furnaces', 'drops', 'mobs', 'containers', 'mobSites'])
+        if (JSON.stringify(data[key]) !== JSON.stringify(data.dimensions[data.dimension][key]))
+          throw Error('Active dimension contents do not match.');
+    }
   }
   return data;
 }
@@ -200,7 +288,7 @@ export function createGameServer({
     let text = '';
     for await (const part of req) {
       text += part;
-      if (text.length > 8 * 1024 * 1024) throw Error('Save too large.');
+      if (text.length > 24 * 1024 * 1024) throw Error('Save too large.');
     }
     return JSON.parse(text);
   };
@@ -236,7 +324,7 @@ export function createGameServer({
           return;
         }
         if (pathname === '/api/health' && req.method === 'GET') {
-          send(res, 200, { app: 'voxel-wilds', version: '1.1.0', root: ROOT });
+          send(res, 200, { app: 'voxel-wilds', version: '1.2.0', root: ROOT });
           return;
         }
         if (pathname === '/api/worlds' && req.method === 'GET') {

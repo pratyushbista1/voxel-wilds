@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0
+
+- Added automatic respawning after death and removed both manual spawn buttons.
+- Added two-block beds, saved respawn points, safe fallback spawning and sleeping to dawn.
+- Added zombies, skeletons, creepers, spiders, farm animals and Nether mobs.
+- Added melee pursuit, knockback, ranged attacks, daylight burning and creeper explosions.
+- Added animal meat drops, cooking, gold equipment and new crafting recipes.
+- Added persistent 27-slot chests and generated treasure.
+- Added obsidian portals, paired dimension travel and separate Overworld/Nether saves.
+- Added Nether terrain, lava damage, fortresses, bastions and blaze spawners.
+- Added twelve editable Blender models and a survival model gallery.
+- Added Unlimited FPS, render scale, brightness and expanded graphics/difficulty controls.
+- Added version 3 save validation and retained loading support for older worlds.
+- Added automated tests for sleeping, combat, loot, portals and death/reload edge cases.
+- Moved new Windows builds into versioned release folders, preserving older builds.
+
 ## 1.1.0
 
 - Removed automatic one-block step-up and tightened collision resolution.

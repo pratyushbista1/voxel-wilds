@@ -7,7 +7,11 @@ import { updatePlayer, animateHand } from './player.js';
 import { World, raycast, collides, moveBody, CHUNK, HEIGHT } from './world.js';
 import { createAtlas, makeIcons, uvFor } from './textures.js';
 import { ChunkRenderer } from './mesher.js';
-import { Assets, Atmosphere, Creatures, Particles } from './assets.js';
+import { Assets, Atmosphere, Particles } from './assets.js';
+import { Mobs } from './mobs.js';
+import { Survival } from './survival.js';
+import { collapsePortals } from './portals.js';
+import { VIDEO_DEFAULTS, applyVideo } from './settings.js';
 import { Sound } from './audio.js';
 import { UI, $ } from './ui.js';
 
@@ -38,6 +42,7 @@ class Game {
     this.atlas = createAtlas();
     this.icons = makeIcons(this.atlas.canvas);
     this.settings = {
+      ...VIDEO_DEFAULTS,
       sensitivity: 45,
       distance: 5,
       fov: 75,
@@ -79,6 +84,7 @@ class Game {
     this.saving = false;
     this.damageTimer = 0;
     this.damageCooldown = 0;
+    this.systems = new Survival(this);
     this.ui = new UI(this, this.icons);
     this.player = this.newPlayer(new World('wildflower').spawn());
     const outlineGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.006, 1.006, 1.006));
@@ -168,8 +174,8 @@ class Game {
     this.creatures?.dispose();
     this.particles?.dispose();
     this.drops?.dispose();
-    this.world = new World(seed, saved?.edits || []);
-    if (!saved) {
+    this.world = new World(seed, saved?.edits || [], this.dimension);
+    if (!saved && this.dimension === 'overworld') {
       for (const [x, z, id] of [
         [-1, -1, B.CAMPFIRE],
         [-4, -2, B.WORKBENCH],
@@ -181,8 +187,8 @@ class Game {
       }
     }
     this.atmosphere = new Atmosphere(this.scene, this.world);
-    this.creatures = new Creatures(this.scene, this.world, this.assets);
-    this.creatures.populate();
+    this.creatures = new Mobs(this.scene, this.world, this.assets, this);
+    this.creatures.populate(saved?.mobs);
     this.particles = new Particles(this.scene);
     this.drops = new Drops(this.scene, this.world, this.icons);
     for (const d of saved?.drops || []) this.drops.spawn(d.stack, d, { x: 0, y: 0, z: 0 }, d.age);
@@ -192,7 +198,7 @@ class Game {
     if (saved) {
       this.player.yaw = saved.player.yaw;
       this.player.pitch = clamp(saved.player.pitch, -1.55, 1.55);
-      this.player.health = clamp(saved.player.health, 1, 20);
+      this.player.health = clamp(saved.player.health, 0, 20);
       this.player.hunger = clamp(saved.player.hunger, 0, 20);
       this.player.saturation = clamp(saved.player.saturation ?? 5, 0, this.player.hunger);
       this.player.exhaustion = clamp(saved.player.exhaustion ?? 0, 0, 4);
@@ -215,8 +221,10 @@ class Game {
     this.target = null;
     this.clearInput();
     this.generating = false;
+    this.applySettings();
   }
   async create(name, seed, mode) {
+    this.systems.reset();
     await this.sound.start();
     this.paused = true;
     this.active = false;
@@ -262,6 +270,7 @@ class Game {
     if (!response.ok)
       throw Error('Could not load this world. Your save files are still in the saves folder.');
     const saved = await response.json();
+    this.systems.reset(saved);
     this.paused = true;
     this.active = false;
     this.ui.hide();
@@ -289,15 +298,14 @@ class Game {
       for (const [key, value] of Object.entries(saved.settings))
         if (key in this.settings && typeof value === typeof this.settings[key])
           this.settings[key] = value;
-      this.settings.distance = clamp(this.settings.distance, 3, 8);
-      this.settings.fov = clamp(this.settings.fov, 60, 100);
+      this.settings.distance = clamp(this.settings.distance, 3, 12);
+      this.settings.fov = clamp(this.settings.fov, 60, 110);
       this.settings.sensitivity = clamp(this.settings.sensitivity, 10, 100);
       this.settings.volume = clamp(this.settings.volume, 0, 100);
       this.syncSettingsUI();
       this.applySettings();
     }
     await this.setupWorld(saved.seed, saved);
-    if (saved.player.health <= 0) this.player = this.newPlayer(this.world.spawn());
     for (const stack of this.storage.close()) this.dropStack(stack);
     this.active = true;
     this.lastSaveRevision = this.world.revision;
@@ -306,7 +314,8 @@ class Game {
     this.ui.update();
     $('loading').classList.add('hidden');
     $('hud').classList.remove('hidden');
-    this.capture();
+    if (this.player.health <= 0) this.showDeath('Returning to your respawn point.');
+    else this.capture();
     this.ui.toast(`Welcome back to ${this.name}.`);
   }
   syncSettingsUI() {
@@ -315,17 +324,35 @@ class Game {
       ['view-distance', 'distance', ' chunks'],
       ['fov', 'fov', '°'],
       ['volume', 'volume', '%'],
+      ['render-scale', 'renderScale', '%'],
+      ['brightness', 'brightness', '%'],
+      ['fog-distance', 'fogDistance', '%'],
+      ['entity-distance', 'entityDistance', ' blocks'],
     ]) {
       $(id).value = this.settings[key];
       $(id + '-value').textContent = this.settings[key] + suffix;
     }
     $('shadows').checked = this.settings.shadows;
     $('show-fps').checked = this.settings.showFps;
+    for (const [id, key] of [
+      ['clouds', 'clouds'],
+      ['view-bobbing', 'viewBobbing'],
+      ['vignette-setting', 'vignette'],
+    ])
+      $(id).checked = this.settings[key];
+    for (const [id, key] of [
+      ['max-fps', 'maxFps'],
+      ['shadow-size', 'shadowSize'],
+      ['particles', 'particles'],
+      ['difficulty', 'difficulty'],
+    ])
+      $(id).value = String(this.settings[key]);
   }
   snapshot() {
     const p = this.player;
     return {
-      version: 2,
+      version: 3,
+      ...this.systems.snapshot(),
       id: this.id,
       name: this.name,
       seed: this.world.seed,
@@ -483,6 +510,11 @@ class Game {
         if (event.code === 'Escape' && this.ui.modal) this.ui.close();
         return;
       }
+      if (this.player.health <= 0 || this.systems.transition) return;
+      if (this.systems.sleepTimer) {
+        if (event.code === 'Escape') this.systems.wake();
+        return;
+      }
       if (
         [
           'Space',
@@ -636,6 +668,7 @@ class Game {
     this.ui.update();
   }
   applySettings() {
+    applyVideo(this);
     this.renderer.shadowMap.enabled = this.settings.shadows;
     this.camera.fov = this.settings.fov;
     this.camera.updateProjectionMatrix();
@@ -664,17 +697,20 @@ class Game {
     this.inventoryKind = kind;
     this.storage.openGrid(kind === 'table' ? 3 : 2);
     this.storage.furnace = null;
+    this.storage.chest = null;
     this.stationKey = null;
     if (kind === 'furnace') {
       this.stationKey = `${target.x},${target.y},${target.z}`;
       if (!this.furnaces.has(this.stationKey)) this.furnaces.set(this.stationKey, makeFurnace());
       this.storage.furnace = this.furnaces.get(this.stationKey);
     }
+    if (kind === 'chest') this.storage.chest = this.systems.chest(target);
     this.ui.show('inventory-modal');
   }
   closeInventory() {
     for (const stack of this.storage.close()) this.dropStack(stack);
     this.storage.furnace = null;
+    this.storage.chest = null;
     this.inventoryChanged();
     this.save(true).catch(() => {});
   }
@@ -714,12 +750,13 @@ class Game {
     this.inventoryChanged();
   }
   place() {
-    if (this.actionCooldown > 0) return;
+    if (this.actionCooldown > 0 || this.systems.sleepTimer || this.systems.transition) return;
     if (
       this.target &&
       this.world.get(this.target.x, this.target.y, this.target.z) !== this.target.id
     )
       this.target = null;
+    if (this.systems.interact(this.target, ITEMS[this.hotbar[this.selected]])) return;
     if (this.target && !this.keys.has('ShiftLeft') && !this.keys.has('ShiftRight')) {
       if (this.target.id === B.WORKBENCH) {
         this.openInventory('table', this.target);
@@ -749,6 +786,10 @@ class Game {
       return;
     }
     const existing = this.world.get(x, y, z);
+    if (id === B.NETHER_WART && this.world.get(x, y - 1, z) !== B.SOUL_SAND) {
+      this.ui.toast('Nether wart needs soul sand.');
+      return;
+    }
     if (existing !== B.AIR && existing !== B.WATER) return;
     if (
       isSolid(id) &&
@@ -760,7 +801,8 @@ class Game {
       z < p.z + 0.29
     )
       return;
-    if (this.world.set(x, y, z, id)) {
+    if (item.bed ? this.systems.placeBed(x, y, z) : this.world.set(x, y, z, id)) {
+      if (id === B.CHEST) this.containers.set(`${x},${y},${z}`, Array(27).fill(null));
       if (this.mode === 'survival') this.storage.take('bag', this.selected, 1);
       this.stats.placed++;
       this.actionCooldown = 0.16;
@@ -800,12 +842,8 @@ class Game {
     }
     const origin = this.camera.position,
       dir = this.camera.getWorldDirection(new THREE.Vector3()),
-      creature = this.creatures.hit(origin, dir);
-    if (
-      creature &&
-      (!this.target ||
-        Math.hypot(creature.x - origin.x, creature.z - origin.z) < this.target.distance)
-    ) {
+      creature = this.creatures.hit(origin, dir, Math.min(3.1, this.target?.distance ?? 3.1));
+    if (creature) {
       this.hitCreature(creature);
       return;
     }
@@ -819,7 +857,7 @@ class Game {
       held = ITEMS[this.hotbar[this.selected]],
       hasTool = this.mode === 'creative' || (this.inventory[this.hotbar[this.selected]] || 0) > 0;
     if (block.hardness === Infinity) {
-      if (this.mining.key !== key) this.ui.toast('Bedrock is the foundation of the world.');
+      if (this.mining.key !== key) this.ui.toast(`${block.name} cannot be mined.`);
       this.mining.key = key;
       return;
     }
@@ -845,14 +883,33 @@ class Game {
       if (block.tier && tier < block.tier && this.mode !== 'creative') {
         this.ui.toast(
           'This ore needs a stronger pickaxe.',
-          `Required: ${block.tier === 1 ? 'wooden' : 'stone'} pickaxe or better.`,
+          `Required: ${['', 'wooden', 'stone', 'iron', 'crystal'][block.tier]} pickaxe or better.`,
           true
         );
         this.actionCooldown = 0.5;
         this.mining.progress = 0;
         return;
       }
+      if (t.id === B.CHEST) this.systems.chest(t);
       this.world.set(t.x, t.y, t.z, B.AIR);
+      if (t.id === B.OBSIDIAN) collapsePortals(this.world, t.x, t.y, t.z);
+      if (block.bed) {
+        const facing = block.facing,
+          dx = [0, 1, 0, -1][facing],
+          dz = [-1, 0, 1, 0][facing];
+        this.world.set(
+          t.x + dx * (block.bedHead ? -1 : 1),
+          t.y,
+          t.z + dz * (block.bedHead ? -1 : 1),
+          B.AIR
+        );
+      }
+      if (this.containers.has(key)) {
+        for (const stack of this.containers.get(key))
+          if (stack) this.drops.spawn(stack, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+        this.containers.delete(key);
+      }
+      if ([B.CHEST, B.GOLD_BLOCK, B.NETHER_GOLD].includes(t.id)) this.creatures.alertPiglins();
       if (this.furnaces.has(key)) {
         for (const stack of this.furnaces.get(key).slots)
           if (stack) this.drops.spawn(stack, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
@@ -862,11 +919,17 @@ class Game {
       if (t.id === B.LOG) this.stats.logs++;
       if (this.mode === 'survival') {
         if (block.drop)
-          this.drops.spawn(makeStack(block.drop, block.dropCount || 1), {
-            x: t.x + 0.5,
-            y: t.y + 0.4,
-            z: t.z + 0.5,
-          });
+          this.drops.spawn(
+            makeStack(
+              t.id === B.GRAVEL && Math.random() < 0.25 ? 129 : block.drop,
+              block.dropCount || 1
+            ),
+            {
+              x: t.x + 0.5,
+              y: t.y + 0.4,
+              z: t.z + 0.5,
+            }
+          );
         if (t.id === B.LEAVES && Math.random() < 0.35)
           this.drops.spawn(makeStack(93), { x: t.x + 0.5, y: t.y + 0.4, z: t.z + 0.5 });
         this.wearTool(held?.damage ? 2 : 1);
@@ -906,27 +969,17 @@ class Game {
     this.crackTexture.needsUpdate = true;
   }
   hitCreature(m) {
-    this.actionCooldown = 0.5;
+    this.actionCooldown = 0.55;
     this.startSwing();
     const id = this.hotbar[this.selected],
       held = this.mode === 'creative' || this.inventory[id] > 0 ? ITEMS[id] : null,
-      damage = held?.damage || 3;
-    m.health -= damage;
+      damage =
+        (held?.damage || 1) * (!this.player.grounded && this.player.velocity.y < 0 ? 1.5 : 1);
+    this.creatures.hurt(m, damage, this.camera.getWorldDirection(new THREE.Vector3()));
     this.wearTool(held?.damage ? 1 : 2);
     this.player.exhaustion += 0.1;
     this.particles.burst(m.x, m.y + 0.8, m.z, m.kind === 'sentinel' ? '#a8d7c3' : '#dec6a2', 6);
     this.sound.play('mine');
-    m.yaw += Math.PI;
-    m.walking = true;
-    m.timer = 4;
-    if (m.health <= 0) {
-      this.creatures.remove(m);
-      if (this.mode === 'survival')
-        this.addItem(
-          m.kind === 'sentinel' ? 94 : m.kind === 'sheep' ? 20 : 93,
-          m.kind === 'sentinel' ? 2 : 3
-        );
-    }
   }
   hurt(amount, reason, physical = false) {
     if (this.mode === 'creative' || this.damageCooldown > 0 || this.paused) return;
@@ -951,7 +1004,7 @@ class Game {
       );
       this.inventoryChanged();
     }
-    this.player.health = Math.max(0, this.player.health - amount);
+    this.player.health = Math.max(0, this.player.health - Math.max(1, Math.round(amount)));
     this.player.exhaustion += 0.1;
     this.damageTimer = 0.45;
     this.damageCooldown = 0.6;
@@ -970,25 +1023,29 @@ class Game {
         this.dropStack(s);
       this.storage = new Inventory();
       this.inventoryChanged();
-      this.paused = true;
-      this.ui.show('death-modal');
-      $('death-reason').textContent = reason;
-      this.clearInput();
+      this.showDeath(reason);
     }
   }
-  respawn(afterDeath = false) {
-    const health = this.player.health,
-      hunger = this.player.hunger,
-      saturation = this.player.saturation;
-    this.player = this.newPlayer(this.world.spawn());
-    if (!afterDeath) Object.assign(this.player, { health, hunger, saturation });
-    this.damageTimer = 0;
-    this.refreshHeld();
-    this.ui.update();
-    this.ui.toast(
-      afterDeath ? 'Respawned. Dropped items remain for five minutes.' : 'Returned to spawn.'
-    );
-    this.save(true).catch(() => {});
+  showDeath(reason) {
+    this.paused = true;
+    this.ui.show('death-modal');
+    this.deathCountdown = 3;
+    this.systems.wake();
+    $('death-countdown').textContent = 'Respawning in 3...';
+    $('death-reason').textContent = reason;
+    this.clearInput();
+  }
+  respawn() {
+    return this.systems.respawn();
+  }
+  isNight() {
+    return this.systems.isNight();
+  }
+  blockLight(x, y, z) {
+    return this.systems.blockLight(x, y, z);
+  }
+  explode(x, y, z, radius, reason) {
+    return this.systems.explode(x, y, z, radius, reason);
   }
   refreshHeld() {
     if (!this.heldRoot) return;
@@ -1135,10 +1192,17 @@ class Game {
   }
   tick(now) {
     requestAnimationFrame((t) => this.tick(t));
-    const dt = Math.min((now - (this.previousFrame || now)) / 1000, 0.05);
+    if (
+      this.settings.maxFps &&
+      this.previousFrame &&
+      now - this.previousFrame < 1000 / this.settings.maxFps - 0.5
+    )
+      return;
+    const realDt = Math.max(0, (now - (this.previousFrame || now)) / 1000);
+    const dt = Math.min(realDt, 0.25);
     this.previousFrame = now;
     this.elapsed += dt;
-    this.frameTime += dt;
+    this.frameTime += realDt;
     this.frameCount++;
     if (this.frameTime >= 0.5) {
       this.fps = this.frameCount / this.frameTime;
@@ -1146,27 +1210,32 @@ class Game {
       this.frameCount = 0;
     }
     if (!this.world || !this.chunks || this.generating) return;
+    this.systems.frame(Math.min(realDt, 1));
     if (this.active) {
       if (!this.paused) {
-        this.time += dt;
-        this.playTime += dt;
-        this.updatePlayer(dt);
-        this.creatures.update(
-          dt,
-          this.player,
-          this.atmosphere.lightLevel < 0.28,
-          this.mode === 'survival',
-          (damage, reason) => this.hurt(damage, reason, true)
-        );
-        this.particles.update(dt);
-        this.drops.update(dt, this.player, this.storage, (id, count) => {
-          this.ui.pickup(id, count);
-          this.inventoryChanged();
-        });
-        for (const furnace of this.furnaces.values()) tickFurnace(furnace, dt);
+        for (
+          let remaining = dt;
+          remaining > 0.00001 && !this.paused && !this.systems.transition;
+          remaining -= 0.05
+        ) {
+          const step = Math.min(0.05, remaining);
+          this.time += step;
+          this.playTime += step;
+          this.updatePlayer(step);
+          this.creatures.update(step, this.player, this.isNight(), this.mode === 'survival');
+          this.particles.update(step);
+          this.drops.update(step, this.player, this.storage, (id, count) => {
+            this.ui.pickup(id, count);
+            this.inventoryChanged();
+          });
+          for (const furnace of this.furnaces.values()) tickFurnace(furnace, step);
+          this.systems.tick(step);
+        }
       }
       this.chunks.update(this.player.x, this.player.z, this.settings.distance);
       this.atmosphere.update(this.time, this.player, dt, this.settings.distance);
+      this.scene.fog.near *= this.settings.fogDistance / 100;
+      this.scene.fog.far *= this.settings.fogDistance / 100;
       this.outline.visible = !!this.target && !this.paused;
       if (this.paused) {
         this.crackMesh.visible = false;
@@ -1189,7 +1258,7 @@ class Game {
       this.camera.lookAt(-5, 26, -16);
       this.chunks.update(7, 7, this.settings.distance);
       this.atmosphere.update(400, { x: 9, y: 29, z: 5 }, dt, this.settings.distance, true);
-      this.creatures.update(dt, { x: 0, y: 29, z: 0 }, false, false, () => {});
+      this.creatures.update(dt, { x: 0, y: 29, z: 0 }, false, false);
       this.outline.visible = false;
       this.crackMesh.visible = false;
       $('underwater').style.opacity = '0';
@@ -1197,6 +1266,7 @@ class Game {
     this.damageTimer = Math.max(0, this.damageTimer - dt);
     $('damage-flash').style.opacity = String(this.damageTimer / 0.45);
     this.updateLights();
+    this.assets.portalMaterial.uniforms.time.value = this.elapsed;
     this.renderer.info.reset();
     this.renderer.autoClear = true;
     this.renderer.render(this.scene, this.camera);
@@ -1218,6 +1288,8 @@ class Game {
       active: this.active,
       paused: this.paused,
       mode: this.mode,
+      dimension: this.dimension,
+      bedSpawn: this.bedSpawn,
       name: this.name,
       seed: this.world?.seed,
       player: {

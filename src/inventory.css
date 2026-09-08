@@ -550,3 +550,9 @@
     grid-template-columns: repeat(4, 1fr);
   }
 }
+.station-area.chest {
+  display: grid;
+  grid-template-columns: repeat(9, var(--slot));
+  gap: 2px;
+  padding: 14px 0;
+}

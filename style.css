@@ -1687,3 +1687,41 @@ kbd {
     right: 20px;
   }
 }
+#portal-overlay,
+#fire-overlay,
+#sleep-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 12;
+}
+#portal-overlay {
+  background: radial-gradient(ellipse, #962cb84a, #53106dcc);
+  opacity: 0;
+}
+#fire-overlay {
+  background: linear-gradient(0deg, #ff8b23bb, transparent 40%);
+  box-shadow: inset 0 -25px 70px #e75112;
+}
+#sleep-overlay {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  background: #071a30d9;
+  z-index: 45;
+}
+#sleep-overlay h2 {
+  font-size: 36px;
+}
+#settings-modal {
+  max-height: 88vh;
+  overflow-y: auto;
+}
+#settings-modal select {
+  width: 100%;
+  padding: 10px;
+  background: #22372c;
+  color: #e5ecd9;
+  border: 1px solid #688066;
+  border-radius: 5px;
+}

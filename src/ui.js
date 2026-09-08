@@ -67,16 +67,6 @@ export class UI {
     on('pause-settings', () => this.show('settings-modal', 'pause-modal'));
     on('pause-guide', () => this.show('guide-modal', 'pause-modal'));
     on('save-quit-button', () => this.run(() => g.quit()));
-    on('respawn-button', () => {
-      g.respawn();
-      this.hide();
-      g.capture();
-    });
-    on('death-respawn', () => {
-      g.respawn(true);
-      this.hide();
-      g.capture();
-    });
     on('fullscreen-button', () => {
       const op = document.fullscreenElement
         ? document.exitFullscreen()
@@ -91,6 +81,10 @@ export class UI {
       ['view-distance', 'distance', ' chunks'],
       ['fov', 'fov', '°'],
       ['volume', 'volume', '%'],
+      ['render-scale', 'renderScale', '%'],
+      ['brightness', 'brightness', '%'],
+      ['fog-distance', 'fogDistance', '%'],
+      ['entity-distance', 'entityDistance', ' blocks'],
     ]) {
       $(id).value = g.settings[key];
       $(id + '-value').textContent = g.settings[key] + suffix;
@@ -103,6 +97,9 @@ export class UI {
     for (const [id, key] of [
       ['shadows', 'shadows'],
       ['show-fps', 'showFps'],
+      ['clouds', 'clouds'],
+      ['view-bobbing', 'viewBobbing'],
+      ['vignette-setting', 'vignette'],
     ]) {
       $(id).checked = g.settings[key];
       $(id).addEventListener('change', () => {
@@ -114,6 +111,18 @@ export class UI {
       const el = e.target.closest('[data-world]');
       if (el) this.run(() => g.load(el.dataset.world));
     });
+    for (const [id, key] of [
+      ['max-fps', 'maxFps'],
+      ['shadow-size', 'shadowSize'],
+      ['particles', 'particles'],
+      ['difficulty', 'difficulty'],
+    ]) {
+      $(id).value = String(g.settings[key]);
+      $(id).addEventListener('change', () => {
+        g.settings[key] = key === 'difficulty' ? $(id).value : Number($(id).value);
+        g.applySettings();
+      });
+    }
     $('hotbar').addEventListener('click', (e) => {
       const slot = e.target.closest('[data-slot]');
       if (!slot || this.modal) return;
@@ -160,7 +169,7 @@ export class UI {
     if (this.game.active) {
       this.game.paused = id !== 'inventory-modal';
       this.game.clearInput();
-      if (document.pointerLockElement) document.exitPointerLock();
+      if (document.pointerLockElement && id !== 'death-modal') document.exitPointerLock();
     }
     if (id === 'inventory-modal') {
       this.inventoryView.render();

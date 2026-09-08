@@ -3,6 +3,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 app.setAppUserModelId('io.voxelwilds.game');
+app.commandLine.appendSwitch('disable-frame-rate-limit');
 const root = app.getAppPath();
 const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
 const customData = process.env.VOXEL_DATA_DIR;

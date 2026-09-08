@@ -35,6 +35,15 @@ export const RECIPES = [
   shaped('leggings', 3, [92, 92, 92, 92, 0, 92, 92, 0, 92], 112),
   shaped('boots', 3, [92, 0, 92, 92, 0, 92], 113),
   shaped('shield', 3, [7, 92, 7, 7, 7, 7, 0, 7, 0], 114),
+  shaped('bed', 3, [20, 20, 20, 7, 7, 7], 25),
+  shaped('chest', 3, [7, 7, 7, 7, 0, 7, 7, 7, 7], 41),
+  shaped('flintsteel', 2, [92, 0, 0, 129], 130),
+  shaped('goldblock', 3, [131, 131, 131, 131, 131, 131, 131, 131, 131], 40),
+  shaped('goldingots', 1, [40], 131, 9),
+  shaped('goldnuggets', 1, [131], 138, 9),
+  shaped('goldingot', 3, [138, 138, 138, 138, 138, 138, 138, 138, 138], 131),
+  shaped('goldhelmet', 3, [131, 131, 131, 131, 0, 131], 150),
+  shaped('netherbricks', 2, [139, 139, 139, 139], 38),
 ];
 
 export function matchRecipe(grid, size) {
@@ -70,5 +79,17 @@ export function matchRecipe(grid, size) {
   return null;
 }
 
-export const SMELTING = { 4: 9, 95: 92, 96: 97, 8: 3, 5: 91 };
+export const SMELTING = {
+  4: 9,
+  95: 92,
+  96: 97,
+  8: 3,
+  5: 91,
+  120: 121,
+  122: 123,
+  124: 125,
+  126: 127,
+  45: 131,
+  36: 139,
+};
 export const FUEL = { 91: 80, 5: 15, 7: 15, 90: 5, 16: 15, 100: 10 };

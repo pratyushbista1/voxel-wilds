@@ -31,11 +31,25 @@ try {
         inventory.totals(true),
         Object.fromEntries(Object.entries(saved.inventory).filter(([, n]) => n > 0))
       );
-    const world = new World(saved.seed, saved.edits);
+    const world = new World(saved.seed, saved.edits, saved.dimension || 'overworld');
     assert.deepEqual(world.serialize(), saved.edits);
+    const dimension = saved.dimension || 'overworld';
+    const dimensionState = {
+      edits: saved.edits,
+      drops: saved.drops || [],
+      furnaces: saved.furnaces || [],
+      mobs: saved.mobs || [],
+      containers: saved.containers || [],
+      mobSites: saved.mobSites || [],
+    };
     const upgraded = {
       ...saved,
-      version: 2,
+      ...dimensionState,
+      version: 3,
+      dimension,
+      dimensions: { ...saved.dimensions, [dimension]: dimensionState },
+      bedSpawn: saved.bedSpawn || null,
+      portalLinks: saved.portalLinks || [],
       inventory: inventory.totals(),
       hotbar: inventory.slots.slice(0, 9).map((s) => s?.id || 0),
       inventoryData: inventory.serialize(),

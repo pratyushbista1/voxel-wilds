@@ -11,7 +11,7 @@ $testRoot = Join-Path $cacheRoot ('installer-test-' + [Guid]::NewGuid().ToString
 $installDir = [System.IO.Path]::GetFullPath((Join-Path $testRoot 'app'))
 if (-not $installDir.StartsWith($cacheRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid test install path.' }
 New-Item -ItemType Directory -Path $testRoot | Out-Null
-$setup = Join-Path $gameRoot "release\Voxel-Wilds-Setup-$version.exe"
+$setup = Join-Path $gameRoot "release\$version\Voxel-Wilds-Setup-$version.exe"
 $installer = Start-Process -FilePath $setup -ArgumentList @('/S', '/currentuser', '/no-desktop-shortcut', "/D=$installDir") -WindowStyle Hidden -PassThru -Wait
 if ($installer.ExitCode -ne 0) { throw "Installer exited with $($installer.ExitCode)." }
 $installedExe = Join-Path $installDir 'Voxel Wilds.exe'
@@ -31,7 +31,7 @@ $report = Get-Content -LiteralPath $env:VOXEL_TEST_REPORT -Raw | ConvertFrom-Jso
 $before = (Get-FileHash -LiteralPath $report.saveFile -Algorithm SHA256).Hash
 $resolvedInstallDir = (Resolve-Path -LiteralPath $installDir).Path
 if ($resolvedInstallDir -ne $installDir -or -not $resolvedInstallDir.StartsWith($cacheRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to uninstall outside the test directory.' }
-$launcher = Join-Path $gameRoot "release\Voxel-Wilds-Uninstall-$version.exe"
+$launcher = Join-Path $gameRoot "release\$version\Voxel-Wilds-Uninstall-$version.exe"
 $removed = Start-Process -FilePath $launcher -ArgumentList '/S' -WindowStyle Hidden -PassThru -Wait
 if ($removed.ExitCode -ne 0) { throw "Uninstaller exited with $($removed.ExitCode)." }
 $deadline = [DateTime]::UtcNow.AddSeconds(25)

@@ -21,10 +21,86 @@ export class Assets {
     flame.name = 'flame';
     torch.add(stick, flame);
     this.models.set('torch', torch);
+    this.portalMaterial = new THREE.ShaderMaterial({
+      uniforms: { time: { value: 0 } },
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      vertexShader:
+        'varying vec2 uvPos; void main(){uvPos=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+      fragmentShader:
+        'uniform float time; varying vec2 uvPos; void main(){vec2 p=uvPos*12.0;float wave=sin(p.x+sin(p.y+time)*2.0+time)+cos(p.y*1.4-time);vec3 c=mix(vec3(.19,.03,.34),vec3(.78,.25,.98),.5+.25*wave);gl_FragColor=vec4(c,.78);}',
+    });
+    for (const [name, rotation] of [
+      ['portal_x', 0],
+      ['portal_z', Math.PI / 2],
+    ]) {
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.portalMaterial);
+      plane.position.y = 0.5;
+      plane.rotation.y = rotation;
+      const root = new THREE.Group();
+      root.add(plane);
+      this.models.set(name, root);
+    }
+    const wart = new THREE.Group();
+    for (const [x, z] of [
+      [-0.2, -0.2],
+      [0.2, 0],
+      [0, 0.2],
+    ]) {
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.25, 0.3),
+        new THREE.MeshLambertMaterial({ color: '#aa263b' })
+      );
+      cap.position.set(x, 0.17, z);
+      wart.add(cap);
+    }
+    this.models.set('wart', wart);
+    const spawner = new THREE.Group(),
+      cageMaterial = new THREE.MeshLambertMaterial({ color: '#252633' });
+    for (let axis = 0; axis < 3; axis++)
+      for (const a of [-0.45, 0, 0.45])
+        for (const b of [-0.45, 0.45]) {
+          const size = [0.04, 0.04, 0.04],
+            pos = [0, 0, 0];
+          size[axis] = 0.94;
+          pos[(axis + 1) % 3] = a;
+          pos[(axis + 2) % 3] = b;
+          const bar = new THREE.Mesh(new THREE.BoxGeometry(...size), cageMaterial);
+          bar.position.set(pos[0], pos[1] + 0.5, pos[2]);
+          spawner.add(bar);
+        }
+    const core = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, 0.25, 0.25),
+      new THREE.MeshBasicMaterial({ color: '#ffbe43' })
+    );
+    core.position.y = 0.5;
+    spawner.add(core);
+    this.models.set('spawner', spawner);
   }
   async load(onProgress = () => {}) {
     const loader = new GLTFLoader(),
-      names = ['sheep', 'fox', 'sentinel', 'campfire', 'lantern', 'pickaxe', 'sword'];
+      names = [
+        'sheep',
+        'fox',
+        'sentinel',
+        'campfire',
+        'lantern',
+        'pickaxe',
+        'sword',
+        'zombie',
+        'skeleton',
+        'piglin',
+        'cow',
+        'pig',
+        'chicken',
+        'creeper',
+        'spider',
+        'blaze',
+        'bed_head',
+        'bed_foot',
+        'chest',
+      ];
     await Promise.all(
       names.map(async (name) => {
         const gltf = await loader.loadAsync(`/assets/models/${name}.glb`);
@@ -134,7 +210,7 @@ export class Atmosphere {
     this.darkGround = new THREE.Color(0x202f35);
     this.flowers = new THREE.Group();
     scene.add(this.flowers);
-    this.populateFlowers();
+    if (world.dimension !== 'nether') this.populateFlowers();
   }
   populateFlowers() {
     const geometry = new THREE.PlaneGeometry(0.55, 0.55);
@@ -246,6 +322,27 @@ export class Atmosphere {
     this.petalPositions = flowerData;
   }
   update(time, player, dt, radius = 5, menu = false) {
+    if (this.world.dimension === 'nether') {
+      this.lightLevel = 0.25;
+      this.scene.background.set('#351718');
+      this.scene.fog.color.set('#4a2020');
+      this.scene.fog.near = radius * 5;
+      this.scene.fog.far = radius * 16;
+      this.hemi.color.set('#ef9b72');
+      this.hemi.groundColor.set('#733229');
+      this.hemi.intensity = 1.65;
+      this.sunLight.intensity = 0.45;
+      this.sunLight.color.set('#ffa475');
+      this.sunLight.position.set(player.x + 20, player.y + 20, player.z - 20);
+      this.sunLight.target.position.set(player.x, player.y, player.z);
+      this.sun.visible =
+        this.moon.visible =
+        this.cloudGroup.visible =
+        this.stars.visible =
+        this.flowers.visible =
+          false;
+      return;
+    }
     const fraction = (time % 1200) / 1200,
       angle = fraction * Math.PI * 2 - Math.PI / 2;
     const altitude = Math.sin(angle),
@@ -329,9 +426,8 @@ export class Creatures {
     this.nightSpawned = false;
     this.spawnTimer = 0;
   }
-  spawn(kind, x, z) {
-    const y = this.world.surface(Math.floor(x), Math.floor(z));
-    if (y <= SEA || y > 55) return;
+  spawn(kind, x, z, y = this.world.surface(Math.floor(x), Math.floor(z))) {
+    if (y < 1 || y > 69) return;
     const mesh = this.assets.make(kind);
     if (!mesh) return;
     const legs = [],
@@ -350,7 +446,8 @@ export class Creatures {
       headRig.position.copy(head.position);
       head.parent.add(headRig);
       const parts = [];
-      const names = /^(head|fringe|muzzle|ear|eye|glint|brow|nose|snout|jaw)(_|$)/;
+      const names =
+        /^(head|fringe|muzzle|ear|eye|glint|brow|nose|snout|jaw|mouth|tusk|horn|comb)([_.]|$)/;
       mesh.traverse((o) => {
         if (o.isMesh && names.test(o.name)) parts.push(o);
       });
@@ -530,6 +627,7 @@ export class Particles {
     this.materials = new Map();
   }
   burst(x, y, z, color, count = 12) {
+    count = Math.min(count, this.maxCount ?? 180);
     if (!this.materials.has(color))
       this.materials.set(color, new THREE.MeshLambertMaterial({ color }));
     for (let n = 0; n < count; n++) {
@@ -551,7 +649,7 @@ export class Particles {
         life: 0.4 + Math.random() * 0.5,
       });
     }
-    while (this.list.length > 180) this.remove(this.list[0]);
+    while (this.list.length > (this.maxCount ?? 180)) this.remove(this.list[0]);
   }
   update(dt) {
     for (const p of [...this.list]) {

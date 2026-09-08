@@ -1,6 +1,12 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+if exist "release\1.2.0\win-unpacked\Voxel Wilds.exe" (
+  set "VOXEL_DATA_DIR=%~dp0userdata"
+  set "VOXEL_SAVE_DIR=%~dp0saves"
+  start "" "release\1.2.0\win-unpacked\Voxel Wilds.exe"
+  exit /b 0
+)
 if exist "release\win-unpacked\Voxel Wilds.exe" (
   set "VOXEL_DATA_DIR=%~dp0userdata"
   set "VOXEL_SAVE_DIR=%~dp0saves"
