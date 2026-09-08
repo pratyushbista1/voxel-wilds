@@ -1,4 +1,9 @@
 $ErrorActionPreference = 'Stop'
+function Get-SaveChecksum([string]$file) {
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try { [Convert]::ToBase64String($algorithm.ComputeHash([System.IO.File]::ReadAllBytes($file))) }
+    finally { $algorithm.Dispose() }
+}
 $gameRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $cacheRoot = Join-Path $gameRoot '.cache'
 $version = (Get-Content -LiteralPath (Join-Path $gameRoot 'package.json') -Raw | ConvertFrom-Json).version
@@ -28,7 +33,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Installed desktop test failed. The isolated installation was left for inspection.' }
 } finally { Pop-Location }
 $report = Get-Content -LiteralPath $env:VOXEL_TEST_REPORT -Raw | ConvertFrom-Json
-$before = (Get-FileHash -LiteralPath $report.saveFile -Algorithm SHA256).Hash
+$before = Get-SaveChecksum $report.saveFile
 $resolvedInstallDir = (Resolve-Path -LiteralPath $installDir).Path
 if ($resolvedInstallDir -ne $installDir -or -not $resolvedInstallDir.StartsWith($cacheRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to uninstall outside the test directory.' }
 $launcher = Join-Path $gameRoot "release\$version\Voxel-Wilds-Uninstall-$version.exe"
@@ -38,7 +43,7 @@ $deadline = [DateTime]::UtcNow.AddSeconds(25)
 while ((Test-Path -LiteralPath $installedExe) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
 if (Test-Path -LiteralPath $installedExe) { throw 'Uninstaller did not remove the test game.' }
 if (Test-Path -LiteralPath $registryPath) { throw 'Uninstaller did not remove the test registry entry.' }
-$after = (Get-FileHash -LiteralPath $report.saveFile -Algorithm SHA256).Hash
+$after = Get-SaveChecksum $report.saveFile
 if ($before -ne $after) { throw 'Saved world changed during uninstall.' }
 Write-Output 'PASS: Separate uninstall EXE removed the isolated installation and registry entry, preserving its saved world.'
 Write-Output "Preserved test world: $($report.saveFile)"
