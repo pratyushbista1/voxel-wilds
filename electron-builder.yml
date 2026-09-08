@@ -1,0 +1,51 @@
+appId: io.voxelwilds.game
+productName: Voxel Wilds
+directories:
+  output: release
+  buildResources: build
+asar: true
+extraResources:
+  - from: node_modules/three/examples/jsm
+    to: three-addons
+    filter:
+      - loaders/GLTFLoader.js
+      - utils/BufferGeometryUtils.js
+      - utils/SkeletonUtils.js
+files:
+  - desktop/**
+  - src/**
+  - assets/models/**
+  - build/icon.ico
+  - index.html
+  - style.css
+  - favicon.svg
+  - server.mjs
+  - package.json
+  - LICENSE
+  - THIRD_PARTY_NOTICES.md
+  - node_modules/three/build/**
+  - node_modules/three/examples/jsm/**
+  - node_modules/three/LICENSE
+  - '!**/*.map'
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  signAndEditExecutable: true
+nsis:
+  guid: 34e646bf-ca86-5f39-b459-84e60fb13190
+  artifactName: Voxel-Wilds-Setup-${version}.exe
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+portable:
+  artifactName: Voxel-Wilds-Portable-${version}.exe
+  requestExecutionLevel: user

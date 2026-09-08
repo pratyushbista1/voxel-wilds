@@ -1,0 +1,11 @@
+.cache/
+tools/
+node_modules/
+assets/
+artifacts/
+logs/
+saves/
+package-lock.json
+release/
+backups/
+userdata/

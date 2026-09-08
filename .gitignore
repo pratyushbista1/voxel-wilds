@@ -1,0 +1,17 @@
+node_modules/
+.cache/
+tools/
+saves/*
+!saves/.gitkeep
+logs/
+backups/
+userdata/
+release/
+artifacts/
+*.blend1
+*.log
+.env
+.env.*
+!.env.example
+Thumbs.db
+.DS_Store

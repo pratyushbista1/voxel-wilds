@@ -1,0 +1,34 @@
+name: Windows release build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run setup:desktop
+      - run: npm test
+      - run: npm run test:desktop
+      - run: npm run build:win
+      - name: Test packaged app
+        shell: pwsh
+        run: |
+          $env:VOXEL_PACKAGED_EXE = Join-Path $PWD 'release/win-unpacked/Voxel Wilds.exe'
+          npm run test:desktop
+      - run: npm run test:portable
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Voxel-Wilds-Windows
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
+            release/README.txt
+          retention-days: 14

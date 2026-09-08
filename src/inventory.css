@@ -1,0 +1,552 @@
+.inventory-open .modal-shade {
+  background: #0009;
+  backdrop-filter: none;
+}
+.inventory-screen.modal {
+  --slot: 44px;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 0;
+  overflow: visible;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: 'Courier New', monospace;
+  color: #373737;
+}
+.inventory-panel,
+.recipe-book {
+  position: relative;
+  padding: 15px 17px 17px;
+  background: #c6c6c6;
+  border: 3px solid #151515;
+  border-radius: 3px;
+  box-shadow:
+    inset 3px 3px #fff,
+    inset -3px -3px #555,
+    3px 3px #0005;
+}
+.inventory-panel {
+  width: calc(var(--slot) * 9 + 40px);
+}
+.inventory-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 22px;
+  margin-bottom: 9px;
+}
+.inventory-title-row h2 {
+  font:
+    bold 16px 'Courier New',
+    monospace;
+  margin: 0;
+  color: #373737;
+  letter-spacing: 0;
+}
+.inventory-title-row button {
+  color: #333;
+  background: none;
+  border: 0;
+  font-size: 24px;
+  line-height: 20px;
+}
+.station-area {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 184px;
+  margin-bottom: 10px;
+  gap: 20px;
+}
+.station-area.personal {
+  gap: 6px;
+  justify-content: flex-start;
+}
+.armor-slots {
+  display: grid;
+  grid-template-columns: var(--slot);
+  gap: 0;
+}
+#player-preview {
+  width: 106px;
+  height: 176px;
+  background: #111;
+  border: 2px solid #858585;
+  border-right-color: white;
+  border-bottom-color: white;
+  overflow: hidden;
+}
+#player-preview canvas {
+  width: 106px !important;
+  height: 172px !important;
+}
+.inv-slot,
+.recipe-tile {
+  width: var(--slot);
+  height: var(--slot);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #8b8b8b;
+  border: 2px solid;
+  border-color: #373737 #fff #fff #373737;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  outline-offset: -4px;
+}
+.inv-slot img,
+.recipe-tile img {
+  width: 87%;
+  height: 87%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.inv-slot:hover,
+.inv-slot.drag-highlight {
+  background: #c3c3c3;
+}
+.inv-slot::after {
+  pointer-events: none;
+}
+.stack-count {
+  position: absolute;
+  bottom: 0;
+  right: 2px;
+  font:
+    bold 19px/1 'Courier New',
+    monospace;
+  color: white;
+  text-shadow: 2px 2px #333;
+  pointer-events: none;
+}
+.durability {
+  position: absolute;
+  height: 5px;
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  background: #070707;
+  pointer-events: none;
+  border-bottom: 2px solid #101010;
+}
+.durability i {
+  display: block;
+  height: 3px;
+}
+.armor-slots .inv-slot:empty::after {
+  color: #555;
+  font-size: 24px;
+  text-shadow: 1px 1px #aaa;
+}
+.armor-0:empty::after {
+  content: '⌒';
+}
+.armor-1:empty::after {
+  content: 'T';
+}
+.armor-2:empty::after {
+  content: 'Π';
+}
+.armor-3:empty::after {
+  content: '⌞⌟';
+  font-size: 17px !important;
+}
+.station-area .offhand-slot {
+  position: absolute;
+  left: 157px;
+  bottom: 4px;
+}
+.offhand-slot:empty::after {
+  content: '⬟';
+  color: #555;
+  font-size: 23px;
+}
+.craft-area {
+  margin-left: auto;
+  align-self: flex-start;
+  padding-top: 23px;
+}
+.craft-label {
+  display: block;
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.craft-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.craft-grid {
+  display: grid;
+  gap: 0;
+}
+.craft-arrow {
+  position: relative;
+  color: #8b8b8b;
+  font: 35px/40px monospace;
+  width: 43px;
+  height: 40px;
+  text-shadow: 1px 1px #fff;
+}
+.craft-arrow > span {
+  color: #888;
+}
+.craft-arrow > i {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  overflow: hidden;
+  color: white;
+  font-style: normal;
+  text-shadow: 1px 1px #777;
+}
+.output-slot {
+  width: calc(var(--slot) + 10px);
+  height: calc(var(--slot) + 10px);
+}
+.table .craft-area {
+  margin: 0;
+  padding: 0;
+  align-self: center;
+}
+.table .craft-label {
+  display: none;
+}
+.table .craft-row {
+  gap: 20px;
+}
+.storage-label {
+  font-size: 14px;
+  margin: 7px 0 5px;
+}
+#inventory-storage,
+#inventory-hotbar {
+  display: grid;
+  grid-template-columns: repeat(9, var(--slot));
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 0;
+}
+#inventory-hotbar {
+  margin-top: 12px;
+}
+.recipe-toggle {
+  position: absolute;
+  top: 195px;
+  left: 225px;
+  background: #769563;
+  color: #eef4d4;
+  border: 2px solid;
+  border-color: #cad6bd #3e493a #3e493a #cad6bd;
+  font-size: 23px;
+  width: 32px;
+  height: 29px;
+  line-height: 22px;
+}
+.recipe-book {
+  width: 270px;
+  padding: 16px;
+}
+.recipe-book h3 {
+  margin: 0 0 13px;
+  font-size: 16px;
+}
+.inventory-screen input:not([type]),
+.inventory-screen input {
+  border-radius: 0;
+  background: #777;
+  border: 2px solid;
+  border-color: #444 #eee #eee #444;
+  color: white;
+  padding: 6px 8px;
+  height: 31px;
+  font:
+    13px 'Courier New',
+    monospace;
+}
+.inventory-screen input::placeholder {
+  color: #ddd;
+}
+#recipe-list {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  margin: 12px 0;
+  max-height: 280px;
+  overflow: auto;
+}
+.recipe-tile {
+  width: 40px;
+  height: 40px;
+  background: #a7b7a0;
+  border-color: #e5eddc #5b6656 #5b6656 #e5eddc;
+}
+.recipe-tile.unavailable {
+  background: #a98d86;
+  border-color: #ddc6bd #77625d #77625d #ddc6bd;
+}
+.recipe-book p {
+  font-size: 11px;
+  line-height: 1.55;
+  color: #454545;
+}
+.inventory-help {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 94vw;
+  text-align: center;
+  color: #eee;
+  text-shadow: 1px 1px #000;
+  font-size: 11px;
+  line-height: 1.7;
+}
+#inventory-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 44px;
+  z-index: 150;
+  pointer-events: none;
+}
+#inventory-cursor img {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+#inventory-tooltip {
+  position: fixed;
+  z-index: 149;
+  pointer-events: none;
+  background: #16051deb;
+  border: 2px solid #3a1a7c;
+  padding: 8px 11px;
+  white-space: pre-line;
+  color: white;
+  font:
+    13px/1.6 'Courier New',
+    monospace;
+  box-shadow: 2px 2px #050208;
+}
+.furnace-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.furnace-flame {
+  position: relative;
+  height: 33px;
+  width: 30px;
+  font: 30px/33px monospace;
+  color: #797979;
+}
+.furnace-flame i {
+  position: absolute;
+  bottom: 0;
+  color: #ffb337;
+  overflow: hidden;
+  font-style: normal;
+  z-index: 1;
+}
+.creative-tools {
+  display: flex;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+.creative-tools select {
+  background: #8b8b8b;
+  border: 2px solid #444;
+  color: white;
+  font:
+    12px 'Courier New',
+    monospace;
+  max-width: 135px;
+}
+#creative-grid {
+  display: grid;
+  grid-template-columns: repeat(9, var(--slot));
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-bottom: 12px;
+}
+.is-creative .station-area {
+  display: none;
+}
+.is-creative .storage-label {
+  display: none;
+}
+.hotbar-slot {
+  border-radius: 0;
+  background: #7e7e7e95;
+  border: 3px solid;
+  border-color: #353535 #bdbdbd #bdbdbd #353535;
+  box-shadow: none;
+}
+.hotbar-slot.active {
+  border: 3px solid #eee;
+  background: #9a9a9a9c;
+  box-shadow:
+    inset 0 0 0 2px #454545,
+    0 0 0 1px #292929;
+  transform: none;
+}
+.hotbar-slot img {
+  image-rendering: pixelated;
+}
+#hotbar {
+  gap: 0;
+  border-radius: 0;
+  padding: 3px;
+  background: #3338;
+  border: 2px solid #181818;
+}
+#offhand-hud {
+  position: absolute;
+  bottom: 33px;
+  left: -69px;
+}
+#vitals {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  gap: 30px;
+}
+#health,
+#hunger,
+#armor-meter {
+  display: flex;
+  gap: 1px;
+}
+#armor-meter {
+  position: absolute;
+  bottom: 25px;
+  left: 0;
+}
+#breath-meter {
+  position: absolute;
+  bottom: 25px;
+  right: 0;
+  color: #76d4ed;
+  letter-spacing: 3px;
+  font-size: 19px;
+}
+.heart,
+.food,
+.armor-point {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 23px;
+  line-height: 23px;
+  font-size: 22px;
+  color: #252525;
+  text-shadow:
+    1px 1px #000,
+    -1px -1px #000;
+}
+.heart i,
+.food i,
+.armor-point i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow: hidden;
+  color: #ed4b4b;
+  font-style: normal;
+}
+.food {
+  font-size: 20px;
+}
+.food i {
+  color: #c88b51;
+}
+.armor-point i {
+  color: #d5dedc;
+}
+.bottom-hud {
+  width: 478px;
+  min-width: 0;
+}
+.hotbar-meta {
+  margin-bottom: 8px;
+  display: block;
+}
+#vitals:not(.hidden) + #mode-label {
+  display: none;
+}
+#mode-label {
+  text-align: right;
+  display: block;
+}
+.hotbar-meta #mode-label {
+  margin-top: 3px;
+}
+#exit-game-button {
+  margin-left: 20px;
+}
+@media (max-height: 650px) {
+  .inventory-screen.modal {
+    --slot: 36px;
+  }
+  .station-area {
+    height: 152px;
+  }
+  #player-preview {
+    width: 80px;
+    height: 144px;
+  }
+  #player-preview canvas {
+    width: 80px !important;
+    height: 140px !important;
+  }
+  .station-area .offhand-slot {
+    left: 125px;
+  }
+  .recipe-toggle {
+    top: 160px;
+    left: 186px;
+  }
+  .craft-row {
+    gap: 3px;
+  }
+  .craft-arrow {
+    width: 32px;
+    font-size: 29px;
+  }
+  .recipe-book {
+    width: 245px;
+  }
+  .recipe-tile {
+    width: 35px;
+    height: 35px;
+  }
+  #creative-grid {
+    max-height: 160px;
+  }
+}
+@media (max-width: 780px) {
+  .recipe-book {
+    width: 225px;
+  }
+  #recipe-list {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

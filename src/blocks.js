@@ -1,0 +1,296 @@
+export const B = Object.freeze({
+  AIR: 0,
+  GRASS: 1,
+  DIRT: 2,
+  STONE: 3,
+  SAND: 4,
+  LOG: 5,
+  LEAVES: 6,
+  PLANKS: 7,
+  COBBLE: 8,
+  GLASS: 9,
+  BRICKS: 10,
+  WATER: 11,
+  COAL_ORE: 12,
+  IRON_ORE: 13,
+  CRYSTAL_ORE: 14,
+  SNOW: 15,
+  WORKBENCH: 16,
+  LANTERN: 17,
+  BASALT: 18,
+  CLAY: 19,
+  WOOL: 20,
+  CAMPFIRE: 21,
+  BEDROCK: 22,
+  FURNACE: 23,
+  TORCH: 24,
+});
+
+export const BLOCKS = {
+  0: { name: 'Air', solid: false, transparent: true },
+  1: {
+    name: 'Grass',
+    color: '#7eaa43',
+    tiles: [1, 1, 0, 2, 1, 1],
+    hardness: 0.5,
+    drop: 2,
+    category: 'Earth',
+  },
+  2: { name: 'Dirt', color: '#916341', tile: 2, hardness: 0.4, category: 'Earth' },
+  3: { name: 'Stone', color: '#88938c', tile: 3, hardness: 1.8, drop: 8, category: 'Earth' },
+  4: { name: 'Sand', color: '#dfcc92', tile: 4, hardness: 0.4, category: 'Earth' },
+  5: {
+    name: 'Oak log',
+    color: '#91643b',
+    tiles: [5, 5, 6, 6, 5, 5],
+    hardness: 1.2,
+    category: 'Nature',
+  },
+  6: { name: 'Oak leaves', color: '#50813c', tile: 7, hardness: 0.2, category: 'Nature' },
+  7: { name: 'Oak planks', color: '#c39860', tile: 8, hardness: 0.8, category: 'Building' },
+  8: { name: 'Cobblestone', color: '#78857f', tile: 9, hardness: 1.5, category: 'Building' },
+  9: {
+    name: 'Glass',
+    color: '#abd7d6',
+    tile: 10,
+    hardness: 0.3,
+    transparent: true,
+    category: 'Building',
+  },
+  10: { name: 'Clay bricks', color: '#a96f57', tile: 11, hardness: 1.4, category: 'Building' },
+  11: {
+    name: 'Water',
+    color: '#488ba0',
+    tile: 12,
+    hardness: 0,
+    solid: false,
+    transparent: true,
+    liquid: true,
+    category: 'Nature',
+  },
+  12: {
+    name: 'Coal ore',
+    color: '#505d57',
+    tile: 13,
+    hardness: 2,
+    drop: 91,
+    tier: 1,
+    category: 'Earth',
+  },
+  13: {
+    name: 'Iron ore',
+    color: '#b19983',
+    tile: 14,
+    hardness: 2.4,
+    drop: 95,
+    tier: 1,
+    category: 'Earth',
+  },
+  14: {
+    name: 'Crystal ore',
+    color: '#71cbd1',
+    tile: 15,
+    hardness: 3,
+    drop: 94,
+    tier: 2,
+    category: 'Earth',
+  },
+  15: { name: 'Snow', color: '#e9eee8', tile: 16, hardness: 0.4, category: 'Nature' },
+  16: {
+    name: 'Crafting Table',
+    color: '#b88852',
+    tiles: [18, 18, 17, 8, 18, 18],
+    hardness: 1,
+    category: 'Building',
+  },
+  17: {
+    name: 'Lantern',
+    color: '#ffc975',
+    tile: 19,
+    hardness: 0.4,
+    model: 'lantern',
+    transparent: true,
+    solid: false,
+    category: 'Decoration',
+  },
+  18: { name: 'Basalt', color: '#424e50', tile: 20, hardness: 2, category: 'Building' },
+  19: {
+    name: 'Clay',
+    color: '#b99e86',
+    tile: 21,
+    hardness: 0.5,
+    drop: 96,
+    dropCount: 4,
+    category: 'Earth',
+  },
+  20: { name: 'Ivory wool', color: '#f1e5c9', tile: 22, hardness: 0.4, category: 'Building' },
+  21: {
+    name: 'Campfire',
+    color: '#d89b49',
+    tile: 19,
+    hardness: 0.6,
+    model: 'campfire',
+    transparent: true,
+    solid: false,
+    category: 'Decoration',
+  },
+  22: { name: 'Bedrock', color: '#363c41', tile: 23, hardness: Infinity, category: 'Earth' },
+  23: {
+    name: 'Furnace',
+    color: '#8c918d',
+    tiles: [9, 9, 3, 3, 24, 9],
+    hardness: 3.5,
+    tier: 1,
+    category: 'Building',
+  },
+  24: {
+    name: 'Torch',
+    color: '#efbf61',
+    tile: 19,
+    hardness: 0.1,
+    model: 'torch',
+    transparent: true,
+    solid: false,
+    category: 'Decoration',
+  },
+};
+for (const [id, block] of Object.entries(BLOCKS)) {
+  block.id = Number(id);
+  block.solid ??= true;
+  block.transparent ??= false;
+  block.drop ??= Number(id);
+}
+
+export const ITEMS = {
+  ...BLOCKS,
+  90: { id: 90, name: 'Stick', color: '#b88752', category: 'Materials' },
+  91: { id: 91, name: 'Coal', color: '#3c4445', category: 'Materials' },
+  92: { id: 92, name: 'Iron Ingot', color: '#ced5cb', category: 'Materials' },
+  93: {
+    id: 93,
+    name: 'Wild berries',
+    color: '#d26978',
+    food: 2,
+    saturation: 0.4,
+    category: 'Supplies',
+  },
+  94: { id: 94, name: 'Crystal', color: '#80dedd', category: 'Materials' },
+  95: { id: 95, name: 'Raw Iron', color: '#c7a98d', category: 'Materials' },
+  96: { id: 96, name: 'Clay Ball', color: '#acb4b5', category: 'Materials' },
+  97: { id: 97, name: 'Brick', color: '#bf795e', category: 'Materials' },
+  98: { id: 98, name: 'Iron Nugget', color: '#ced5cb', category: 'Materials' },
+  99: { id: 99, name: 'String', color: '#ece5d2', category: 'Materials' },
+  100: {
+    id: 100,
+    name: 'Wooden pickaxe',
+    color: '#b18853',
+    tier: 1,
+    speed: 2,
+    tool: true,
+    durability: 59,
+    category: 'Tools',
+  },
+  101: {
+    id: 101,
+    name: 'Stone pickaxe',
+    color: '#939c90',
+    tier: 2,
+    speed: 3.5,
+    tool: true,
+    durability: 131,
+    category: 'Tools',
+  },
+  102: {
+    id: 102,
+    name: 'Iron pickaxe',
+    color: '#d8ded8',
+    tier: 3,
+    speed: 5.5,
+    tool: true,
+    durability: 250,
+    category: 'Tools',
+  },
+  103: {
+    id: 103,
+    name: 'Iron sword',
+    color: '#d8ded8',
+    tool: true,
+    durability: 250,
+    damage: 6,
+    category: 'Tools',
+  },
+  104: {
+    id: 104,
+    name: 'Crystal pickaxe',
+    color: '#80dedd',
+    tier: 4,
+    speed: 8,
+    tool: true,
+    durability: 1561,
+    category: 'Tools',
+  },
+  110: {
+    id: 110,
+    name: 'Iron Helmet',
+    color: '#ced5cb',
+    armor: 0,
+    protection: 2,
+    durability: 165,
+    category: 'Equipment',
+  },
+  111: {
+    id: 111,
+    name: 'Iron Chestplate',
+    color: '#ced5cb',
+    armor: 1,
+    protection: 6,
+    durability: 240,
+    category: 'Equipment',
+  },
+  112: {
+    id: 112,
+    name: 'Iron Leggings',
+    color: '#ced5cb',
+    armor: 2,
+    protection: 5,
+    durability: 225,
+    category: 'Equipment',
+  },
+  113: {
+    id: 113,
+    name: 'Iron Boots',
+    color: '#ced5cb',
+    armor: 3,
+    protection: 2,
+    durability: 195,
+    category: 'Equipment',
+  },
+  114: {
+    id: 114,
+    name: 'Shield',
+    color: '#b99a68',
+    shield: true,
+    durability: 336,
+    category: 'Equipment',
+  },
+};
+export const CREATIVE_ITEMS = Object.keys(ITEMS)
+  .map(Number)
+  .filter((id) => id !== B.AIR && id !== B.BEDROCK);
+
+export function isSolid(id) {
+  return Boolean(BLOCKS[id]?.solid);
+}
+export function tileFor(id, face) {
+  const b = BLOCKS[id];
+  return b?.tiles?.[face] ?? b?.tile ?? 0;
+}
+export function canCraft(bag, recipe) {
+  return recipe.ingredients.every(([id, n]) => (bag[id] || 0) >= n);
+}
+export function craft(bag, recipe) {
+  if (!canCraft(bag, recipe)) return false;
+  for (const [id, n] of recipe.ingredients) bag[id] -= n;
+  bag[recipe.output] = (bag[recipe.output] || 0) + recipe.count;
+  return true;
+}

@@ -1,0 +1,37 @@
+{
+  "name": "voxel-wilds",
+  "productName": "Voxel Wilds",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A singleplayer voxel sandbox for Windows and the browser.",
+  "main": "desktop/main.cjs",
+  "author": "Voxel Wilds contributors",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/launch.mjs",
+    "serve": "node server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node scripts/smoke-test.mjs",
+    "desktop": "electron .",
+    "setup:desktop": "node scripts/install-electron.mjs",
+    "build:win": "node scripts/build-windows.mjs",
+    "test:desktop": "node scripts/desktop-test.mjs",
+    "test:portable": "node scripts/portable-test.mjs",
+    "test:installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-installer.ps1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "electron": "44.2.0",
+    "electron-builder": "26.15.3",
+    "playwright": "1.63.0",
+    "prettier": "3.9.6"
+  }
+}

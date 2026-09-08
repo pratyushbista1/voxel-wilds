@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#172820" />
+    <title>Voxel Wilds</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/src/inventory.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/node_modules/three/build/three.module.js",
+          "three/addons/": "/node_modules/three/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="game-canvas" aria-label="Voxel Wilds 3D game world"></canvas>
+    <div id="vignette"></div>
+    <div id="underwater"></div>
+    <div id="damage-flash"></div>
+    <div id="loading" class="loading-screen">
+      <img src="/favicon.svg" alt="" width="58" height="58" />
+      <p class="eyebrow">VOXEL WILDS</p>
+      <h2>Loading Voxel Wilds</h2>
+      <div class="load-track"><div id="load-fill"></div></div>
+      <p id="load-status">Loading...</p>
+    </div>
+    <main id="menu" class="screen menu-screen hidden">
+      <header class="menu-top">
+        <a class="wordmark" href="#" aria-label="Voxel Wilds home"
+          ><img src="/favicon.svg" alt="" width="30" height="30" /><span
+            >VOXEL WILDS<span class="wordmark-dot">·</span></span
+          ></a
+        >
+        <div class="top-status">
+          <span class="status-dot"></span> SINGLEPLAYER <span class="version">v1.1</span>
+        </div>
+      </header>
+      <section class="menu-hero">
+        <div class="eyebrow hero-eyebrow">
+          <span class="tiny-rule"></span> AN OPEN-WORLD SANDBOX
+        </div>
+        <h1>VOXEL<br /><span>WILDS</span><span class="title-period">.</span></h1>
+        <p class="hero-description">Mine, craft and build.<br />Explore your own world.</p>
+        <div class="menu-actions">
+          <button id="continue-button" class="button primary hidden">
+            <span class="button-icon">▷</span
+            ><span>Continue<small id="continue-world-name"></small></span
+            ><span class="arrow">↗</span></button
+          ><button id="new-world-button" class="button primary">
+            <span class="button-icon">＋</span><span>Create a world</span
+            ><span class="arrow">↗</span>
+          </button>
+          <div class="secondary-actions">
+            <button id="worlds-button" class="button subtle">
+              ▦ &nbsp; My worlds <span id="world-count" class="count-badge">0</span></button
+            ><button id="menu-settings-button" class="button subtle">⚙ &nbsp; Settings</button>
+          </div>
+        </div>
+        <button id="how-to-button" class="text-button">Controls <span>How to play ↗</span></button>
+        <button id="exit-game-button" class="text-button hidden">Quit game</button>
+      </section>
+      <div class="scene-label">
+        <span class="scene-label-line"></span>
+        <div>
+          <span class="eyebrow">SEED: WILDFLOWER</span>
+          <p>Meadow and river valley</p>
+        </div>
+      </div>
+      <footer class="menu-footer">
+        <span><span class="status-dot"></span> SINGLEPLAYER &nbsp; / &nbsp; SAVED ON YOUR PC</span
+        ><span>MINE. BUILD. WANDER.<span class="footer-cube">◇</span></span>
+      </footer>
+    </main>
+    <div id="hud" class="hidden">
+      <div class="hud-top-left">
+        <div class="hud-logo">
+          <img src="/favicon.svg" width="24" height="24" alt="" /><span>VOXEL WILDS</span>
+        </div>
+        <div class="location-panel">
+          <span id="biome-name">Sunlit meadow</span>
+          <div><span id="coordinates">X 0 · Y 0 · Z 0</span><span id="direction">N</span></div>
+        </div>
+      </div>
+      <div class="hud-top-right">
+        <div class="time-panel">
+          <span id="time-icon">☀</span>
+          <div><span id="day-label">DAY 01</span><strong id="time-label">08:00</strong></div>
+        </div>
+        <button id="pause-button" class="icon-button" title="Pause (Esc)" aria-label="Pause game">
+          Ⅱ
+        </button>
+      </div>
+      <div id="objective" class="objective">
+        <div class="eyebrow">OBJECTIVE</div>
+        <div class="objective-line">
+          <span id="objective-icon">◇</span
+          ><span id="objective-text">Gather your first oak log</span>
+        </div>
+        <div id="objective-detail">Hold left click on a tree trunk</div>
+      </div>
+      <div id="target-info" class="target-info hidden">
+        <span id="target-name"></span><small id="target-tool"></small>
+      </div>
+      <div id="crosshair"><i></i><i></i></div>
+      <div id="mining-progress"><div></div></div>
+      <div id="toast-stack" aria-live="polite"></div>
+      <div class="bottom-hud">
+        <div class="hotbar-meta">
+          <div id="vitals">
+            <div id="armor-meter" class="hidden" title="Armor"></div>
+            <div id="breath-meter" title="Air"></div>
+            <div id="health" title="Health"></div>
+            <div id="hunger" title="Food"></div>
+          </div>
+          <span id="mode-label">CREATIVE</span>
+        </div>
+        <div id="selected-label">Grass</div>
+        <div id="hotbar" aria-label="Hotbar"></div>
+        <div id="offhand-hud" class="hotbar-slot hidden" title="Offhand (F)"></div>
+        <div class="hotbar-hints">
+          <span><kbd>E</kbd> Inventory & crafting</span
+          ><span><kbd>LMB</kbd> Mine <kbd>RMB</kbd> Place</span><span><kbd>H</kbd> Guide</span>
+        </div>
+      </div>
+      <div id="save-indicator"><span class="status-dot"></span><span>World saved</span></div>
+      <div id="fps-counter" class="hidden"></div>
+    </div>
+    <div id="modal-shade" class="modal-shade hidden"></div>
+    <section
+      id="create-modal"
+      class="modal compact-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">NEW WORLD</div>
+          <h2 id="create-title">Create World</h2>
+        </div>
+        <button class="close-button" data-close aria-label="Close">×</button>
+      </div>
+      <label class="field-label" for="world-name">WORLD NAME</label
+      ><input id="world-name" maxlength="48" value="New World" autocomplete="off" />
+      <div class="field-row">
+        <label class="field-label" for="world-seed"
+          >WORLD SEED <span>Same seed. Same landscape.</span></label
+        ><button id="random-seed" class="text-button">Shuffle ⤨</button>
+      </div>
+      <input id="world-seed" maxlength="64" value="wildflower" autocomplete="off" />
+      <div class="field-label mode-title">GAME MODE</div>
+      <div class="mode-cards">
+        <button class="mode-card selected" data-mode="creative">
+          <span class="mode-symbol">◇</span><strong>Creative</strong>
+          <p>Every block is yours.<br />Build freely. Take flight.</p>
+          <span class="selection-dot"></span></button
+        ><button class="mode-card" data-mode="survival">
+          <span class="mode-symbol">♧</span><strong>Survival</strong>
+          <p>Gather, craft, and explore.<br />Stay ready for nightfall.</p>
+          <span class="selection-dot"></span>
+        </button>
+      </div>
+      <button id="create-play-button" class="button primary full-width">
+        <span>Create World</span><span>↗</span>
+      </button>
+      <p class="modal-footnote">Your world saves automatically on this PC.</p>
+    </section>
+    <section
+      id="worlds-modal"
+      class="modal compact-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="worlds-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">SAVED WORLDS</div>
+          <h2 id="worlds-title">Worlds</h2>
+        </div>
+        <button class="close-button" data-close aria-label="Close">×</button>
+      </div>
+      <div id="world-list"></div>
+      <button id="worlds-create" class="button primary full-width">
+        ＋ &nbsp; Create another world
+      </button>
+    </section>
+    <section
+      id="pause-modal"
+      class="modal pause-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pause-title"
+    >
+      <div class="eyebrow">GAME MENU</div>
+      <h2 id="pause-title">Paused</h2>
+      <p id="pause-world-name"></p>
+      <button id="resume-button" class="button primary full-width">▷ &nbsp; Resume</button>
+      <div class="pause-grid">
+        <button id="pause-settings" class="button secondary">Settings</button
+        ><button id="pause-guide" class="button secondary">Controls</button>
+      </div>
+      <button id="respawn-button" class="button secondary full-width">Return to spawn</button
+      ><button id="save-quit-button" class="button subtle full-width">
+        Save & return to title <span>↗</span>
+      </button>
+      <p class="modal-footnote" id="pause-save-status">Your progress is saved automatically.</p>
+    </section>
+    <section
+      id="settings-modal"
+      class="modal compact-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">OPTIONS</div>
+          <h2 id="settings-title">Settings</h2>
+        </div>
+        <button class="close-button" data-close aria-label="Close">×</button>
+      </div>
+      <label class="range-label" for="sensitivity"
+        >Mouse sensitivity <output id="sensitivity-value">50%</output></label
+      ><input id="sensitivity" type="range" min="10" max="100" value="45" /><label
+        class="range-label"
+        for="view-distance"
+        >View distance <output id="view-distance-value">5 chunks</output></label
+      ><input id="view-distance" type="range" min="3" max="8" value="5" /><label
+        class="range-label"
+        for="fov"
+        >Field of view <output id="fov-value">75°</output></label
+      ><input id="fov" type="range" min="60" max="100" value="75" /><label
+        class="range-label"
+        for="volume"
+        >Sound volume <output id="volume-value">40%</output></label
+      ><input id="volume" type="range" min="0" max="100" value="40" /><label class="toggle-row"
+        >Soft shadows<input id="shadows" type="checkbox" checked /><span
+          class="toggle"
+        ></span></label
+      ><label class="toggle-row"
+        >Show FPS & diagnostics<input id="show-fps" type="checkbox" /><span
+          class="toggle"
+        ></span></label
+      ><button id="fullscreen-button" class="button secondary full-width">
+        ⛶ &nbsp; Toggle fullscreen
+      </button>
+      <p class="modal-footnote">Changes apply immediately. Press F11 for fullscreen.</p>
+    </section>
+    <section
+      id="guide-modal"
+      class="modal guide-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="guide-title"
+    >
+      <div class="modal-heading">
+        <div>
+          <div class="eyebrow">HOW TO PLAY</div>
+          <h2 id="guide-title">Controls & Crafting</h2>
+        </div>
+        <button class="close-button" data-close aria-label="Close">×</button>
+      </div>
+      <div class="guide-columns">
+        <div>
+          <h3>Movement</h3>
+          <dl>
+            <dt><kbd>W A S D</kbd></dt>
+            <dd>Walk around</dd>
+            <dt><kbd>Mouse</kbd></dt>
+            <dd>Look around</dd>
+            <dt><kbd>Space</kbd></dt>
+            <dd>Jump / swim up</dd>
+            <dt><kbd>Shift</kbd></dt>
+            <dd>Sneak / fly down</dd>
+            <dt><kbd>Ctrl</kbd></dt>
+            <dd>Sprint</dd>
+            <dt><kbd>G</kbd> / <kbd>2x Space</kbd></dt>
+            <dd>Toggle flight in Creative</dd>
+            <dt><kbd>F</kbd></dt>
+            <dd>Swap offhand</dd>
+            <dt><kbd>Q</kbd> / <kbd>Ctrl Q</kbd></dt>
+            <dd>Drop one item / whole stack</dd>
+            <dt><kbd>Space</kbd> / <kbd>Shift</kbd></dt>
+            <dd>Fly up / down</dd>
+          </dl>
+          <h3>Building</h3>
+          <dl>
+            <dt><kbd>Hold LMB</kbd></dt>
+            <dd>Mine blocks / attack</dd>
+            <dt><kbd>RMB</kbd></dt>
+            <dd>Place / open station / hold to eat</dd>
+            <dt><kbd>Middle mouse</kbd></dt>
+            <dd>Pick a block in Creative</dd>
+            <dt><kbd>1-9</kbd> / <kbd>Scroll</kbd></dt>
+            <dd>Select hotbar slot</dd>
+            <dt><kbd>E</kbd></dt>
+            <dd>Inventory & crafting</dd>
+            <dt><kbd>Esc</kbd></dt>
+            <dd>Pause / release mouse</dd>
+          </dl>
+        </div>
+        <div class="guide-story">
+          <span class="guide-number">01</span>
+          <h3>Crafting</h3>
+          <p>
+            Put a log in the 2x2 inventory grid to make four planks. Four planks in a square make a
+            crafting table. Place it, then right click to open its 3x3 grid. A pickaxe needs three
+            materials across the top and two sticks down the middle.
+          </p>
+          <span class="guide-number">02</span>
+          <h3>Inventory & Survival</h3>
+          <p>
+            Right click to split a stack or place one item. Shift-click transfers stacks; dragging
+            distributes them. Tools wear out and break. Hold right click with berries to eat. Health
+            regenerates when your food bar is nearly full. Falling, drowning and enemies cause
+            damage.
+          </p>
+          <span class="guide-number">03</span>
+          <h3>Smelting & Combat</h3>
+          <p>
+            Make a furnace with eight cobblestone around an empty center. Put raw iron above coal to
+            smelt ingots. Craft armor and a sword at a table. Equip a shield and hold right click to
+            block attacks. On death, items drop where you fell and remain for five minutes.
+          </p>
+          <div class="guide-note">
+            Creative provides unlimited blocks, flight and no damage. In Survival, inventory screens
+            do not pause the world. Press Esc to pause safely.
+          </div>
+        </div>
+      </div>
+    </section>
+    <section
+      id="inventory-modal"
+      class="modal inventory-modal inventory-screen hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="inventory-title"
+    >
+      <aside id="recipe-book" class="recipe-book hidden">
+        <h3>Recipe Book</h3>
+        <input
+          id="recipe-search"
+          placeholder="Search..."
+          aria-label="Search recipes"
+          autocomplete="off"
+        />
+        <div id="recipe-list"></div>
+        <p id="recipe-hint"></p>
+        <p>Shift-click a recipe to fill the grid.<br />Shift-click the result to craft all.</p>
+      </aside>
+      <div class="inventory-panel">
+        <div class="inventory-title-row">
+          <h2 id="inventory-title">Inventory</h2>
+          <button id="inventory-close" aria-label="Close inventory">×</button>
+        </div>
+        <div id="creative-catalogue" class="hidden">
+          <div class="creative-tools">
+            <select id="creative-category" aria-label="Item category">
+              <option value="">All items</option>
+              <option>Building</option>
+              <option>Earth</option>
+              <option>Nature</option>
+              <option>Decoration</option>
+              <option>Tools</option>
+              <option>Equipment</option>
+              <option>Materials</option></select
+            ><input
+              id="creative-search"
+              placeholder="Search items..."
+              aria-label="Search items"
+              autocomplete="off"
+            />
+          </div>
+          <div id="creative-grid"></div>
+        </div>
+        <div id="station-area"></div>
+        <button id="recipe-toggle" class="recipe-toggle" title="Show recipes" aria-expanded="false">
+          ▤
+        </button>
+        <div class="storage-label">Inventory</div>
+        <div id="inventory-storage"></div>
+        <div id="inventory-hotbar"></div>
+      </div>
+      <p class="inventory-help">
+        Left click: move · Right click: split/place one · Shift-click: transfer · Drag: distribute ·
+        1-9: swap · E: close
+      </p>
+    </section>
+    <div id="inventory-cursor" class="hidden"></div>
+    <div id="inventory-tooltip" class="hidden"></div>
+    <section
+      id="death-modal"
+      class="modal pause-modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="death-title"
+    >
+      <div class="eyebrow">SURVIVAL</div>
+      <h2 id="death-title">You Died</h2>
+      <p id="death-reason">Your health reached zero.</p>
+      <p class="modal-footnote">Your dropped items remain for five minutes.</p>
+      <button id="death-respawn" class="button primary full-width">Respawn</button>
+    </section>
+    <div id="fatal-error" class="hidden">
+      <h2>Unable to start the game</h2>
+      <p id="fatal-message"></p>
+      <button id="reload-button" class="button primary">Try again</button>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
