@@ -22,6 +22,12 @@ const page = await browser.newPage({
   deviceScaleFactor: 1,
 });
 page.setDefaultTimeout(120000);
+if (process.env.VOXEL_TEST_FRAME_MS) {
+  await page.addInitScript((delay) => {
+    const frame = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => setTimeout(() => frame(callback), delay);
+  }, Number(process.env.VOXEL_TEST_FRAME_MS));
+}
 const errors = [],
   warnings = [],
   failedRequests = [],
@@ -130,10 +136,28 @@ try {
   assert.ok(Math.abs(p.y - initialY) < 0.04, 'walking into a block cannot raise player Y');
   assert.ok(p.z >= 0.288, 'wall collision stops forward movement');
   check('Walking against a full block does not auto-jump');
+  await page.evaluate(() => {
+    window.__jumpProbe = { active: true, highestY: window.__wildsTest.game.player.y };
+    const sample = () => {
+      const probe = window.__jumpProbe;
+      if (!probe.active) return;
+      probe.highestY = Math.max(probe.highestY, window.__wildsTest.game.player.y);
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
   await page.keyboard.down('w');
-  await key('Space', 340);
+  await page.keyboard.press('Space');
+  await page.waitForFunction(
+    () => window.__jumpProbe.highestY > 56.9 && window.__wildsTest.game.player.z < -1.3
+  );
   await page.keyboard.up('w');
-  assert.ok((await state()).player.y > 56.9);
+  assert.ok(
+    await page.evaluate(() => {
+      window.__jumpProbe.active = false;
+      return window.__jumpProbe.highestY > 56.9;
+    })
+  );
   check('Manual jump clears a one-block obstacle');
   await page.keyboard.press('g');
   const beforeFly = (await state()).player.y;

@@ -169,6 +169,7 @@ The browser tests use Chrome at its usual Windows installation path. Set
 `CHROME_PATH` to use a different installation. Tests use isolated worlds under
 `.cache/`; screenshots and reports go to `artifacts/`. Desktop tests run in a
 hidden window. Set `VOXEL_PACKAGED_EXE` to test the unpacked release executable.
+Set `VOXEL_TEST_FRAME_MS=180` to exercise browser input and physics with slow frame delivery.
 
 `npm run test:installer` installs into an isolated test folder, runs the desktop
 test, then uninstalls it and verifies that its save survives. It refuses to
