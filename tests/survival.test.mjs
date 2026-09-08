@@ -10,6 +10,7 @@ import { makeFurnace, tickFurnace } from '../src/furnace.js';
 import { matchRecipe } from '../src/recipes.js';
 import { normalizeSettings } from '../src/settings.js';
 import { Mobs } from '../src/mobs.js';
+import { Survival } from '../src/survival.js';
 import { validateSave } from '../server.mjs';
 
 const flat = () => {
@@ -75,6 +76,30 @@ test('Beds have a two-row recipe, do not stack, and have half-height collision',
   const result = moveBody(w, p, v, 0.2);
   assert.equal(result.grounded, true);
   assert.equal(p.y, 1.5625);
+});
+test('Igniting an already active portal never consumes more flint and steel durability', () => {
+  const world = flat(),
+    storage = new Inventory();
+  storage.slots[0] = makeStack(130);
+  const game = {
+    world,
+    storage,
+    selected: 0,
+    mode: 'survival',
+    keys: new Set(),
+    inventoryChanged() {},
+    sound: { play() {} },
+    ui: { toast() {} },
+  };
+  const survival = new Survival(game);
+  buildPortal(world, 0, 1, 0);
+  const frame = findPortalFrame(world, 1, 2, 0);
+  for (const cell of frame.cells) world.set(...cell, B.AIR);
+  const target = { x: 1, y: 1, z: 0, id: B.OBSIDIAN, normal: { x: 0, y: 1, z: 0 } };
+  assert.equal(survival.interact(target, { igniter: true }), true);
+  assert.equal(storage.slots[0].durability, 63);
+  for (let i = 0; i < 10; i++) survival.interact(target, { igniter: true });
+  assert.equal(storage.slots[0].durability, 63);
 });
 test('Chest transfers and meat smelting conserve stacks', () => {
   const inv = new Inventory();

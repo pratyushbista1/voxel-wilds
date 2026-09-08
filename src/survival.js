@@ -149,18 +149,19 @@ export class Survival {
     }
     if (item?.igniter) {
       const frame =
-        lightPortal(
+        findPortalFrame(
           g.world,
           target.x + target.normal.x,
           target.y + target.normal.y,
           target.z + target.normal.z
-        ) || lightPortal(g.world, target.x, target.y, target.z);
-      if (frame) {
+        ) || findPortalFrame(g.world, target.x, target.y, target.z);
+      if (frame && frame.cells.some((cell) => g.world.get(...cell) !== frame.id)) {
+        for (const cell of frame.cells) g.world.set(...cell, frame.id);
         if (g.mode === 'survival') g.storage.damageTool(g.selected, 1);
         g.inventoryChanged();
         g.sound.play('place');
         g.ui.toast('Portal opened.', 'Stand inside to travel.');
-      } else
+      } else if (!frame)
         g.ui.toast(
           'Build an obsidian frame.',
           'A 4-block-wide, 5-block-high frame needs 10 obsidian without corners.'
