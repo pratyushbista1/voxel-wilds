@@ -58,9 +58,10 @@ try {
     foreach ($entry in $archive.Entries) {
         if ($entry.FullName.EndsWith('/')) { continue }
         if (-not $expected.ContainsKey($entry.FullName) -or $entry.Length -ne $expected[$entry.FullName]) { throw "Unexpected ZIP payload: $($entry.FullName)" }
+        $expected.Remove($entry.FullName)
         $fileCount++
     }
-    if ($fileCount -ne $manifest.FileCount) { throw 'ZIP payload count differs from the manifest.' }
+    if ($fileCount -ne $manifest.FileCount -or $expected.Count -ne 0) { throw 'ZIP payload count differs from the manifest.' }
 } finally { $archive.Dispose() }
 $token = [Guid]::NewGuid().ToString('N').Substring(0, 12)
 $testRoot = [IO.Path]::GetFullPath((Join-Path $cacheRoot "unity-installer-test-$token"))
@@ -95,7 +96,7 @@ foreach ($record in $manifest.Files) {
     $installedPath = Test-InstallChild $record.Path
     if (-not (Test-Path -LiteralPath $installedPath) -or (Get-Checksum $installedPath) -ne $record.Sha256) { throw "Installed file does not match the build: $($record.Path)" }
 }
-Write-Output "PASS installer extracted $($manifest.FileCount) hash-verified native files."
+Write-Output "PASS installer extracted $($manifest.FileCount) hash-verified payload files."
 $nativeSaves = Join-Path $testRoot 'native-smoke-saves'
 New-Item -ItemType Directory -Path $nativeSaves | Out-Null
 if (-not $SkipGame) {
