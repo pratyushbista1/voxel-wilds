@@ -1,0 +1,423 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using UnityEngine;
+using VoxelWilds.Core;
+
+namespace VoxelWilds
+{
+    [Serializable]
+    public sealed class GameSettings
+    {
+        public int ViewDistance=4, Fps=0, Shadows=1;
+        public float FieldOfView=78, Sensitivity=2, Brightness=1, Volume=.7f, EntityDistance=64;
+        public bool Bobbing=true, Fog=true, Clouds=true, Fullscreen=false;
+    }
+    [Serializable] public sealed class EditSave { public int X,Y,Z,Id;public byte Level; }
+    [Serializable] public sealed class ContainerSave { public int X,Y,Z;public ItemStack[] Slots;public Furnace Furnace; }
+    [Serializable] public sealed class DropSave { public float X,Y,Z,Life;public ItemStack Stack; }
+    [Serializable] public sealed class DimensionSave
+    {
+        public int Id;public List<EditSave> Edits=new List<EditSave>();public List<ContainerSave> Containers=new List<ContainerSave>();
+        public List<DropSave> Drops=new List<DropSave>();public MobSnapshot[] Mobs;public string[] MobMarkers;
+    }
+    [Serializable] public sealed class SessionSave
+    {
+        public int Version=4, Seed, Dimension, Difficulty=2;public string Name;
+        public float X=8.5f,Y=33.1f,Z=8.5f,Yaw,Pitch,Health=20,Hunger=20,Saturation=5,Day=.35f;
+        public bool Creative,EndDragonDefeated,HasBed;public int BedX,BedY,BedZ;
+        public Inventory Inventory=new Inventory();public ItemStack[] TransientItems;public List<DimensionSave> Dimensions=new List<DimensionSave>();public List<EditSave> EndEyes=new List<EditSave>();
+    }
+    public sealed class GameSession : MonoBehaviour
+    {
+        public static GameSession Instance { get; private set; }
+        public World World { get; private set; }
+        public PlayerController Player { get; private set; }
+        public WorldRenderer Renderer { get; private set; }
+        public MobDirector Mobs { get; private set; }
+        public GameHud Hud { get; private set; }
+        public GameSettings Settings=new GameSettings();
+        public float TimeOfDay => save?.Day??.35f;
+        public int Difficulty => save?.Difficulty??2;
+        public int RenderDistance => Settings.ViewDistance;
+        public bool EndDragonDefeated => save!=null&&save.EndDragonDefeated;
+        public bool Playing => World!=null&&!Paused&&!Sleeping&&Player!=null&&!Player.Dead;
+        public bool Paused { get; private set; }
+        public bool Sleeping { get; private set; }
+        public float DeathRemaining { get; private set; }
+        public string WorldName=>save?.Name??"";
+        public string LastSaveError { get; private set; }
+        public string SaveDirectory { get; private set; }
+        private SessionSave save;
+        private string savePath;
+        private FluidSimulation fluids;
+        private Light sun;
+        private float autosave,portalTime,portalCooldown,sleepTimer;
+        private readonly Dictionary<Cell,ContainerSave> containers=new Dictionary<Cell,ContainerSave>();
+        private readonly List<DroppedItem> drops=new List<DroppedItem>();
+        private GameObject clouds;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void Bootstrap(){if(FindFirstObjectByType<GameSession>()==null)new GameObject("Voxel Wilds").AddComponent<GameSession>();}
+        private void Awake(){if(Instance!=null&&Instance!=this){Destroy(gameObject);return;}Instance=this;}
+        private void Start()
+        {
+            SaveDirectory=Argument("-voxel-saves")??Path.GetFullPath(Path.Combine(Application.dataPath,"..","saves","unity"));
+            try{Directory.CreateDirectory(SaveDirectory);}catch(Exception){SaveDirectory=Path.Combine(Application.persistentDataPath,"saves");Directory.CreateDirectory(SaveDirectory);}
+            string settingsPath=Path.Combine(SaveDirectory,"settings.json");
+            if(File.Exists(settingsPath))try{Settings=JsonUtility.FromJson<GameSettings>(File.ReadAllText(settingsPath))??new GameSettings();}catch(Exception){Settings=new GameSettings();}
+            Renderer=new GameObject("Voxel chunks").AddComponent<WorldRenderer>();
+            Player=new GameObject("Player").AddComponent<PlayerController>();Player.Init(this);
+            Player.gameObject.SetActive(false);
+            Mobs=new GameObject("Mobs").AddComponent<MobDirector>();
+            Hud=gameObject.AddComponent<GameHud>();Hud.Init(this);
+            sun=new GameObject("Sun").AddComponent<Light>();sun.type=LightType.Directional;sun.color=new Color(1,.93f,.79f);
+            RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Flat;ApplySettings();
+            Cursor.lockState=CursorLockMode.None;Cursor.visible=true;
+            if(Argument("-voxel-smoke")!=null || Environment.GetCommandLineArgs().Contains("-voxel-smoke"))gameObject.AddComponent<SimulationSmoke>();
+        }
+        public static string Argument(string key)
+        {
+            var args=Environment.GetCommandLineArgs();for(int i=0;i<args.Length-1;i++)if(args[i]==key)return args[i+1];return null;
+        }
+        public void ApplySettings()
+        {
+            Settings.ViewDistance=Mathf.Clamp(Settings.ViewDistance,2,8);Settings.FieldOfView=Mathf.Clamp(Settings.FieldOfView,55,110);Settings.Sensitivity=Mathf.Clamp(Settings.Sensitivity,.2f,6);
+            Settings.Fps=Mathf.Clamp(Settings.Fps,0,360);QualitySettings.vSyncCount=0;Application.targetFrameRate=Settings.Fps==0?-1:Settings.Fps;
+            QualitySettings.shadows=Settings.Shadows==0?ShadowQuality.Disable:Settings.Shadows==1?ShadowQuality.HardOnly:ShadowQuality.All;
+            QualitySettings.shadowDistance=Settings.Shadows==0?0:64;QualitySettings.antiAliasing=0;AudioListener.volume=Mathf.Clamp01(Settings.Volume);
+            if(Player!=null){Player.Eye.fieldOfView=Settings.FieldOfView;Player.Eye.farClipPlane=Settings.ViewDistance*16+40;}
+            if(sun!=null)sun.shadows=Settings.Shadows==0?LightShadows.None:LightShadows.Soft;
+            if(!Application.isEditor && Screen.fullScreen!=Settings.Fullscreen)Screen.fullScreen=Settings.Fullscreen;
+            if(SaveDirectory!=null)try{File.WriteAllText(Path.Combine(SaveDirectory,"settings.json"),JsonUtility.ToJson(Settings,true));}catch(Exception error){Notify("Settings could not be saved: "+error.Message);}
+        }
+        public void NewWorld(string name,int seed,bool creative)
+        {
+            save=new SessionSave{Name=string.IsNullOrWhiteSpace(name)?"New world":name.Trim(),Seed=seed,Creative=creative};
+            savePath=Path.Combine(SaveDirectory,"world-"+Guid.NewGuid().ToString("N")+".vws");
+            save.Inventory.Add(Items.WoodenPickaxe,1);save.Inventory.Add((int)Block.Log,8);save.Inventory.Add(Items.Berries,12);
+            if(creative)
+            {
+                int[] starter={(int)Block.Grass,(int)Block.Stone,(int)Block.Planks,Items.CrystalPickaxe,Items.CrystalSword,Items.WaterBucket,Items.LavaBucket,(int)Block.Bed,Items.EndermanEgg};
+                for(int i=0;i<9;i++)save.Inventory.Slots[i]=new ItemStack(starter[i],Items.MaxStack(starter[i]));
+            }
+            StartSavedWorld();SaveWorld();
+        }
+        public void LoadWorld(string path)
+        {
+            try
+            {
+                string full=Path.GetFullPath(path);if(!full.StartsWith(Path.GetFullPath(SaveDirectory)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("World is outside the save directory.");
+                var candidate=JsonUtility.FromJson<SessionSave>(SaveFile.Read(full,out bool recovered));Validate(candidate);
+                save=candidate;savePath=full;StartSavedWorld();if(recovered)Notify("Recovered the world from its last valid backup.");
+            }
+            catch(Exception error){Notify("Could not open world: "+error.Message);}
+        }
+        private static void Validate(SessionSave data)
+        {
+            if(data==null||data.Version!=4||data.Inventory==null||data.Inventory.Slots?.Length!=36||data.Inventory.Armor?.Length!=4||data.Dimensions==null||data.Dimensions.Count>3||data.EndEyes==null)throw new FormatException("Invalid Unity world data.");
+            if(!Finite(data.X)||!Finite(data.Y)||!Finite(data.Z)||Mathf.Abs(data.X)>1000000||Mathf.Abs(data.Z)>1000000||!Finite(data.Day)||!Finite(data.Health)||!Finite(data.Hunger))throw new FormatException("Invalid player coordinates or health.");
+            foreach(var stack in data.Inventory.Slots.Concat(data.Inventory.Armor).Concat(new[]{data.Inventory.Offhand}))ValidateStack(stack);
+            if(data.TransientItems!=null){if(data.TransientItems.Length>10)throw new FormatException("Invalid crafting data.");foreach(var stack in data.TransientItems)ValidateStack(stack);}
+            foreach(var dim in data.Dimensions)
+            {
+                if(dim.Id<0||dim.Id>2||dim.Edits==null||dim.Edits.Count>1000000||dim.Containers==null||dim.Drops==null)throw new FormatException("Invalid dimension.");
+                foreach(var entry in dim.Edits)if(entry.Y<0||entry.Y>=World.Height||entry.Id<0||entry.Id>(int)Block.EndFrame||Mathf.Abs((float)entry.X)>1000000||Mathf.Abs((float)entry.Z)>1000000||entry.Level>8)throw new FormatException("Invalid block edit.");
+                foreach(var box in dim.Containers){if(box.Slots!=null){if(box.Slots.Length!=27)throw new FormatException("Invalid chest.");foreach(var stack in box.Slots)ValidateStack(stack);}if(box.Furnace!=null){ValidateStack(box.Furnace.Input);ValidateStack(box.Furnace.Fuel);ValidateStack(box.Furnace.Output);}}
+                foreach(var drop in dim.Drops)ValidateStack(drop.Stack);
+            }
+            data.Dimension=Mathf.Clamp(data.Dimension,0,2);data.Inventory.Selected=Mathf.Clamp(data.Inventory.Selected,0,8);data.Day=Mathf.Repeat(data.Day,1);data.Difficulty=Mathf.Clamp(data.Difficulty,0,3);
+        }
+        private static bool Finite(float value)=>!float.IsNaN(value)&&!float.IsInfinity(value);
+        private static void ValidateStack(ItemStack stack){if(stack!=null&&!stack.Empty&&(!Items.Exists(stack.Id)||stack.Count>Items.MaxStack(stack.Id)||stack.Count<0||stack.Durability<0||stack.Durability>Items.Durability(stack.Id)))throw new FormatException("Invalid item stack.");}
+        private void StartSavedWorld()
+        {
+            Hud.Close();Player.Inventory=save.Inventory;Player.IsCreative=save.Creative;Player.Health=Mathf.Clamp(save.Health,0,20);Player.Hunger=Mathf.Clamp(save.Hunger,0,20);Player.Saturation=Mathf.Clamp(save.Saturation,0,20);
+            Player.Pitch=save.Pitch;Player.transform.rotation=Quaternion.Euler(0,save.Yaw,0);
+            LoadDimension((Dimension)save.Dimension,new Vector3(save.X,save.Y,save.Z));
+            if(save.TransientItems!=null){foreach(var stack in save.TransientItems){if(stack==null||stack.Empty)continue;int left=Player.Inventory.Add(stack.Id,stack.Count,stack.Durability);if(left>0)DropStack(Player.transform.position+Vector3.up,new ItemStack(stack.Id,left,stack.Durability));}save.TransientItems=null;}
+            if(Player.Dead){Player.ResetVitals();Respawn();}
+            Paused=false;Sleeping=false;autosave=0;Hud.ShowGame();LockCursor();
+        }
+        private void LoadDimension(Dimension dimension,Vector3 landing)
+        {
+            fluids?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop!=null)Destroy(drop.gameObject);drops.Clear();containers.Clear();
+            World=new World(save.Seed,dimension);var state=save.Dimensions.Find(x=>x.Id==(int)dimension);
+            if(state!=null)
+            {
+                World.ApplyEdits(state.Edits.Select(e=>new KeyValuePair<Cell,Voxel>(new Cell(e.X,e.Y,e.Z),new Voxel((Block)e.Id,e.Level))));
+                foreach(var box in state.Containers)containers[new Cell(box.X,box.Y,box.Z)]=box;
+            }
+            Renderer.Init(World);landing=FindSafe(landing);Renderer.EnsureImmediate(landing);Player.gameObject.SetActive(true);Player.Teleport(landing);
+            fluids=new FluidSimulation(World);Mobs.Init(this);
+            if(state!=null){Mobs.RestoreMarkers(state.MobMarkers);Mobs.Restore(state.Mobs);foreach(var drop in state.Drops)if(drop.Stack!=null&&!drop.Stack.Empty&&drop.Life>0)DropStack(new Vector3(drop.X,drop.Y,drop.Z),drop.Stack,drop.Life);}
+            save.Dimension=(int)dimension;portalCooldown=3;portalTime=0;BuildClouds();UpdateSky();
+        }
+        public Vector3 FindSafe(Vector3 preferred)
+        {
+            int px=Mathf.FloorToInt(preferred.x),pz=Mathf.FloorToInt(preferred.z),py=Mathf.Clamp(Mathf.FloorToInt(preferred.y),1,World.Height-3);
+            for(int radius=0;radius<9;radius++)for(int z=-radius;z<=radius;z++)for(int x=-radius;x<=radius;x++)
+            {
+                if(radius>0&&Math.Max(Math.Abs(x),Math.Abs(z))!=radius)continue;
+                for(int offset=0;offset<World.Height;offset++)
+                {
+                    int y=offset%2==0?py+offset/2:py-(offset+1)/2;if(y<1||y>World.Height-3)continue;
+                    Cell p=new Cell(px+x,y,pz+z);
+                    if(World.Solid(p.Down)&&World.GetBlock(p)==Block.Air&&World.GetBlock(p.Up)==Block.Air)return new Vector3(p.X+.5f,y+.08f,p.Z+.5f);
+                }
+            }
+            int floor=World.Dimension==Dimension.End?44:32;
+            for(int z=-2;z<=2;z++)for(int x=-2;x<=2;x++){World.Set(new Cell(px+x,floor,pz+z),World.Dimension==Dimension.End?Block.Obsidian:Block.Cobble);for(int y=1;y<=3;y++)World.Set(new Cell(px+x,floor+y,pz+z),Block.Air);}
+            return new Vector3(px+.5f,floor+1.1f,pz+.5f);
+        }
+        private void Update()
+        {
+            if(World==null)return;
+            float dt=Mathf.Min(Time.deltaTime,.1f);
+            if(Input.GetKeyDown(KeyCode.F11)){Settings.Fullscreen=!Settings.Fullscreen;ApplySettings();}
+            if(Input.GetKeyDown(KeyCode.Escape))
+            {
+                if(Sleeping){Sleeping=false;LockCursor();}
+                else if(Hud.IsOpen)Hud.Close();else SetPaused(!Paused);
+            }
+            if(Input.GetKeyDown(KeyCode.E)&&!Hud.TextInputFocused&&!Paused&&!Sleeping&&!Player.Dead){if(Hud.IsOpen)Hud.Close();else Hud.OpenInventory();}
+            if(Player.Dead)
+            {
+                DeathRemaining-=Time.unscaledDeltaTime;if(DeathRemaining<=0)Respawn();return;
+            }
+            if(Sleeping){sleepTimer+=dt;if(sleepTimer>=2){save.Day=.27f;Sleeping=false;Notify("A new day begins.");SaveWorld();LockCursor();}return;}
+            if(!Playing)return;
+            save.Day=Mathf.Repeat(save.Day+dt/1200,1);UpdateSky();Renderer.Tick(Player.transform.position,Settings.ViewDistance);fluids.Tick(dt,512);
+            foreach(var pair in containers)if(pair.Value.Furnace!=null&&World.GetBlock(pair.Key)==Block.Furnace)pair.Value.Furnace.Tick(dt);
+            portalCooldown-=dt;CheckPortal(dt);autosave+=dt;if(autosave>=20){autosave=0;SaveWorld();}
+        }
+        private void UpdateSky()
+        {
+            bool overworld=World.Dimension==Dimension.Overworld;
+            float day=overworld?Mathf.Clamp01(Mathf.Sin((save.Day-.25f)*Mathf.PI*2)*2+.35f):World.Dimension==Dimension.Nether?.45f:.3f;
+            Color sky=overworld?Color.Lerp(new Color(.025f,.035f,.085f),new Color(.48f,.72f,.91f),day):World.Dimension==Dimension.Nether?new Color(.20f,.055f,.04f):new Color(.045f,.018f,.09f);
+            Player.Eye.backgroundColor=sky;RenderSettings.fog=Settings.Fog;RenderSettings.fogMode=FogMode.Linear;RenderSettings.fogColor=sky;RenderSettings.fogStartDistance=Settings.ViewDistance*8;RenderSettings.fogEndDistance=Settings.ViewDistance*16;
+            float ambient=(.15f+day*.5f)*Settings.Brightness;RenderSettings.ambientLight=new Color(ambient,ambient,ambient);
+            sun.intensity=overworld?day*.85f:.22f;sun.transform.rotation=Quaternion.Euler(save.Day*360-90,30,0);
+            if(clouds){clouds.SetActive(Settings.Clouds&&overworld);clouds.transform.position=new Vector3(Player.transform.position.x+Mathf.Sin(Time.time*.003f)*16,79,Player.transform.position.z);}
+        }
+        private void BuildClouds()
+        {
+            if(clouds)Destroy(clouds);clouds=new GameObject("Clouds");var material=new Material(Shader.Find("Unlit/Color")){color=new Color(.88f,.92f,.96f)};
+            for(int i=0;i<16;i++){var box=GameObject.CreatePrimitive(PrimitiveType.Cube);Destroy(box.GetComponent<Collider>());box.transform.SetParent(clouds.transform,false);box.transform.localPosition=new Vector3((i%4)*43-65,0,(i/4)*39-60);box.transform.localScale=new Vector3(15+i%3*4,2,8+i%5);box.GetComponent<Renderer>().sharedMaterial=material;}
+        }
+        public void SetPaused(bool paused){if(Player.Dead)return;Paused=paused;if(paused){Hud.Close();SaveWorld();}LockCursor();}
+        public void LockCursor(){bool locked=World!=null&&!Paused&&!Sleeping&&!Player.Dead&&!Hud.IsOpen;Cursor.lockState=locked?CursorLockMode.Locked:CursorLockMode.None;Cursor.visible=!locked;}
+        public void Notify(string message){if(Hud!=null)Hud.Notify(message);Debug.Log(message);}
+        public void SetDifficulty(int difficulty){if(save!=null)save.Difficulty=Mathf.Clamp(difficulty,0,3);}
+        public bool SaveWorld()
+        {
+            if(World==null||save==null)return true;
+            try
+            {
+                CaptureDimension();save.Inventory=Player.Inventory;save.TransientItems=Hud.CaptureTransient();save.X=Player.transform.position.x;save.Y=Player.transform.position.y;save.Z=Player.transform.position.z;save.Yaw=Player.transform.eulerAngles.y;save.Pitch=Player.Pitch;save.Health=Player.Health;save.Hunger=Player.Hunger;save.Saturation=Player.Saturation;
+                Validate(save);SaveFile.Write(savePath,JsonUtility.ToJson(save));LastSaveError=null;return true;
+            }
+            catch(Exception error){LastSaveError=error.Message;Notify("Save failed. Keep the game open: "+error.Message);return false;}
+        }
+        private void CaptureDimension()
+        {
+            var state=new DimensionSave{Id=(int)World.Dimension,Mobs=Mobs.Capture(),MobMarkers=Mobs.CaptureMarkers()};
+            foreach(var pair in World.Edits)state.Edits.Add(new EditSave{X=pair.Key.X,Y=pair.Key.Y,Z=pair.Key.Z,Id=(int)pair.Value.Id,Level=pair.Value.Level});
+            state.Containers.AddRange(containers.Values);
+            foreach(var drop in drops)if(drop!=null&&drop.Stack!=null&&!drop.Stack.Empty)state.Drops.Add(new DropSave{X=drop.transform.position.x,Y=drop.transform.position.y,Z=drop.transform.position.z,Life=drop.Life,Stack=drop.Stack.Clone()});
+            save.Dimensions.RemoveAll(x=>x.Id==state.Id);save.Dimensions.Add(state);
+        }
+        public void ReturnToTitle(){Hud.Close();if(!SaveWorld())return;fluids?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop)Destroy(drop.gameObject);drops.Clear();Player.gameObject.SetActive(false);World=null;Paused=false;Hud.ShowTitle();Cursor.lockState=CursorLockMode.None;Cursor.visible=true;}
+        public void Die(){Hud.Close();DeathRemaining=3;Sleeping=false;Paused=false;foreach(var item in Player.Inventory.TakeAll())DropStack(Player.transform.position+Vector3.up,item);SaveWorld();LockCursor();}
+        private void Respawn()
+        {
+            Hud.Close();CaptureDimension();Vector3 destination=new Vector3(8.5f,33.1f,8.5f);
+            if(World.Dimension!=Dimension.Overworld)LoadDimension(Dimension.Overworld,destination);
+            if(save.HasBed&&Blocks.IsBed(World.GetBlock(new Cell(save.BedX,save.BedY,save.BedZ))))destination=new Vector3(save.BedX+.5f,save.BedY+1,save.BedZ+.5f);
+            else if(save.HasBed){save.HasBed=false;Notify("Your bed is missing. Returning to world spawn.");}
+            Player.ResetVitals();destination=FindSafe(destination);Renderer.EnsureImmediate(destination);Player.Teleport(destination);DeathRemaining=0;SaveWorld();LockCursor();
+        }
+        public bool Use(bool hasTarget,Cell target,Cell adjacent)
+        {
+            var held=Player.Inventory.Held;int id=held?.Id??0;Block block=hasTarget?World.GetBlock(target):Block.Air;
+            bool sneak=Input.GetKey(KeyCode.LeftShift);
+            if(hasTarget&&!sneak)
+            {
+                if(block==Block.Workbench){Hud.OpenCrafting();return true;}
+                if(block==Block.Chest){Hud.OpenChest(Container(target).Slots);return true;}
+                if(block==Block.Furnace){Hud.OpenFurnace(Container(target).Furnace);return true;}
+                if(Blocks.IsBed(block)){Sleep(target);return true;}
+                if(block==Block.EndFrame&&id==Items.EyeEnder)
+                {
+                    if(save.EndEyes.Any(p=>p.X==target.X&&p.Y==target.Y&&p.Z==target.Z)){Notify("This frame already has an eye.");return true;}
+                    save.EndEyes.Add(new EditSave{X=target.X,Y=target.Y,Z=target.Z});Player.ConsumeHeld();Notify(save.EndEyes.Count+" / 12 eyes placed");SaveWorld();return true;
+                }
+            }
+            if(id==Items.EnderPearl)
+            {
+                if(Player.Trace(Player.Eye.transform.position,Player.Eye.transform.forward,48,out var pearlHit,out var previous))
+                {
+                    Vector3 landing=FindSafe(new Vector3(previous.X+.5f,previous.Y+.1f,previous.Z+.5f));Renderer.EnsureImmediate(landing);Player.Teleport(landing);Player.ConsumeHeld();Player.Damage(5,landing);return true;
+                }
+            }
+            if(!hasTarget)return false;
+            if(id==Items.FlintSteel&&TryIgnite(target)){if(!Player.IsCreative)Player.Inventory.WearSelected(1);return true;}
+            if(id==Items.EmptyBucket && Blocks.IsFluid(block))
+            {
+                if(World.Get(target).Level!=0){Notify("Buckets collect source blocks, not flowing fluid.");return true;}
+                int filled=block==Block.Water?Items.WaterBucket:Items.LavaBucket;
+                if(!Player.IsCreative){Player.ConsumeHeld();int left=Player.Inventory.Add(filled,1);if(left>0)DropLoot(Player.transform.position,filled,left);}
+                World.Set(target,Block.Air);return true;
+            }
+            if(Items.SpawnMob(id)!=null)
+            {
+                if(Player.IsCreative){var kind=MobRules.Parse(Items.SpawnMob(id));if(Items.SpawnMob(id)=="dragon")kind=MobKind.EndDragon;Mobs.Spawn(kind,new Vector3(adjacent.X+.5f,adjacent.Y,adjacent.Z+.5f));return true;}Notify("Spawn eggs are available in Creative.");return true;
+            }
+            if(id==Items.IronHoe&&(block==Block.Grass||block==Block.Dirt)&&World.GetBlock(target.Up)==Block.Air){World.Set(target,Block.Farmland);if(!Player.IsCreative)Player.Inventory.WearSelected(1);return true;}
+            Block place=Items.PlaceBlock(id);if(place==Block.Air)return false;
+            if(id==Items.WaterBucket&&World.Dimension==Dimension.Nether){Notify("The water evaporates in the Nether.");if(!Player.IsCreative)Player.Inventory.Slots[Player.Inventory.Selected]=new ItemStack(Items.EmptyBucket);return true;}
+            if(!Blocks.IsReplaceable(World.GetBlock(adjacent)))return false;
+            if(adjacent.Y<=0||adjacent.Y>=World.Height-1)return false;
+            if(place==Block.Crop&&World.GetBlock(adjacent.Down)!=Block.Farmland){Notify("Plant seeds on tilled soil.");return true;}
+            if(Blocks.IsSolid(place)&&new Bounds(new Vector3(adjacent.X+.5f,adjacent.Y+.5f,adjacent.Z+.5f),Vector3.one).Intersects(new Bounds(Player.transform.position+Vector3.up*.9f,new Vector3(.6f,1.8f,.6f))))return false;
+            if(Blocks.IsBed(place))
+            {
+                Cell second=adjacent+new Cell(0,0,1);if(World.GetBlock(second)!=Block.Air||!World.Solid(adjacent.Down)||!World.Solid(second.Down))return false;
+                World.Set(adjacent,Block.Bed);World.Set(second,Block.BedHead);
+            }
+            else World.Set(adjacent,place);
+            if(!Player.IsCreative){if(id==Items.WaterBucket||id==Items.LavaBucket)Player.Inventory.Slots[Player.Inventory.Selected]=new ItemStack(Items.EmptyBucket);else Player.ConsumeHeld();}
+            return true;
+        }
+        public void BreakBlock(Cell target)
+        {
+            Block id=World.GetBlock(target);if(float.IsInfinity(Blocks.Hardness(id)))return;
+            if(containers.TryGetValue(target,out var box))
+            {
+                if(box.Slots!=null)foreach(var stack in box.Slots)if(stack!=null&&!stack.Empty)DropStack(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),stack);
+                if(box.Furnace!=null)foreach(var stack in new[]{box.Furnace.Input,box.Furnace.Fuel,box.Furnace.Output})if(stack!=null&&!stack.Empty)DropStack(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),stack);
+                containers.Remove(target);
+            }
+            if(Blocks.IsBed(id)){Cell partner=id==Block.BedHead?target+new Cell(0,0,-1):target+new Cell(0,0,1);if(Blocks.IsBed(World.GetBlock(partner)))World.Set(partner,Block.Air);}
+            World.Set(target,Block.Air);
+            if(!Player.IsCreative&&Items.CanHarvest(Player.Inventory.Held?.Id??0,id))
+            {
+                int drop=Blocks.Drop(id),count=id==Block.Clay?4:1;
+                if(id==Block.Crop){drop=Items.Wheat;DropLoot(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),Items.Seeds,2);}
+                if(id==Block.Gravel&&UnityEngine.Random.value<.1f)drop=Items.Flint;
+                if(drop>0)DropLoot(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),drop,count);
+            }
+            if(id==Block.Obsidian)for(int y=-4;y<=4;y++)for(int z=-3;z<=3;z++)for(int x=-3;x<=3;x++){Cell p=target+new Cell(x,y,z);Block nearby=World.GetBlock(p);if(nearby==Block.PortalX||nearby==Block.PortalZ)World.Set(p,Block.Air);}
+        }
+        private ContainerSave Container(Cell p)
+        {
+            if(containers.TryGetValue(p,out var container))return container;
+            container=new ContainerSave{X=p.X,Y=p.Y,Z=p.Z};
+            if(World.GetBlock(p)==Block.Furnace)container.Furnace=new Furnace();
+            else
+            {
+                container.Slots=new ItemStack[27];var marker=World.Markers.FirstOrDefault(m=>m.Position==p&&m.Kind=="chest");
+                if(marker.Kind=="chest")
+                {
+                    container.Slots[0]=new ItemStack(Items.Bread,4);container.Slots[1]=new ItemStack(Items.IronIngot,3);container.Slots[2]=new ItemStack(Items.Coal,6);container.Slots[3]=new ItemStack(Items.Seeds,8);
+                    if(marker.Mob=="bastion"||marker.Mob=="fortress"){container.Slots[4]=new ItemStack(Items.GoldIngot,8);container.Slots[5]=new ItemStack(Items.Crystal,2);container.Slots[6]=new ItemStack(Items.IronSword);}
+                }
+            }
+            containers.Add(p,container);return container;
+        }
+        private void Sleep(Cell p)
+        {
+            if(World.Dimension!=Dimension.Overworld){World.Set(p,Block.Air);Explode(new Vector3(p.X+.5f,p.Y+.5f,p.Z+.5f),4);return;}
+            save.HasBed=true;save.BedX=p.X;save.BedY=p.Y;save.BedZ=p.Z;
+            if(!MobRules.IsNight(TimeOfDay)){Notify("Respawn point set. You can sleep at night.");SaveWorld();return;}
+            if(Mobs.HostileNear(Player.transform.position,8)){Notify("Monsters are too close to sleep.");return;}
+            Sleeping=true;sleepTimer=0;LockCursor();
+        }
+        private bool TryIgnite(Cell p)
+        {
+            for(int axis=0;axis<2;axis++)for(int horizontal=-3;horizontal<=0;horizontal++)for(int vertical=-4;vertical<=0;vertical++)
+            {
+                Cell origin=p+new Cell(axis==0?horizontal:0,vertical,axis==1?horizontal:0);bool valid=true,already=true;
+                for(int y=0;y<5&&valid;y++)for(int x=0;x<4;x++)
+                {
+                    if((x==0||x==3)&&(y==0||y==4))continue;
+                    Block id=World.GetBlock(origin+new Cell(axis==0?x:0,y,axis==1?x:0));
+                    if(x==0||x==3||y==0||y==4){if(id!=Block.Obsidian)valid=false;}
+                    else {if(id!=Block.Air&&id!=Block.PortalX&&id!=Block.PortalZ)valid=false;if(id==Block.Air)already=false;}
+                }
+                if(!valid)continue;if(already){Notify("The portal is already lit.");return false;}
+                for(int y=1;y<=3;y++)for(int x=1;x<=2;x++)World.Set(origin+new Cell(axis==0?x:0,y,axis==1?x:0),axis==0?Block.PortalX:Block.PortalZ);
+                Notify("Portal ignited.");return true;
+            }
+            Notify("Build a 4 by 5 obsidian frame with a clear 2 by 3 opening.");return false;
+        }
+        private void CheckPortal(float dt)
+        {
+            Cell p=PlayerController.ToCell(Player.transform.position+Vector3.up*.1f);Block block=World.GetBlock(p);Block floor=World.GetBlock(p.Down);
+            if(portalCooldown>0)return;
+            if(block==Block.EndPortal||floor==Block.EndPortal)
+            {
+                if(World.Dimension==Dimension.End){if(EndDragonDefeated)Transfer(Dimension.Overworld);else{Notify("Defeat the dragon to open the exit.");portalCooldown=3;}}
+                else if(Player.IsCreative||save.EndEyes.Count>=12)Transfer(Dimension.End);
+                else{Notify("Place eyes in 12 portal frames to open the End.");portalCooldown=3;}return;
+            }
+            if(block==Block.PortalX||block==Block.PortalZ){portalTime+=dt;if(portalTime>=(Player.IsCreative?.4f:4))Transfer(World.Dimension==Dimension.Nether?Dimension.Overworld:Dimension.Nether);}
+            else portalTime=0;
+        }
+        public void Transfer(Dimension destination)
+        {
+            Hud.Close();CaptureDimension();Dimension from=World.Dimension;Vector3 old=Player.transform.position,position;
+            if(destination==Dimension.End)position=new Vector3(8.5f,45.1f,8.5f);
+            else if(from==Dimension.End)position=new Vector3(8.5f,33.1f,8.5f);
+            else{float factor=destination==Dimension.Nether?.125f:8;position=new Vector3(old.x*factor,33,old.z*factor);}
+            LoadDimension(destination,position);
+            if(destination!=Dimension.End&&from!=Dimension.End)
+            {
+                Cell origin=PlayerController.ToCell(Player.transform.position)+new Cell(-1,-1,3);
+                for(int y=0;y<5;y++)for(int x=0;x<4;x++)World.Set(origin+new Cell(x,y,0),x==0||x==3||y==0||y==4?Block.Obsidian:Block.PortalX);
+                Renderer.EnsureImmediate(Player.transform.position);
+            }
+            SaveWorld();Notify("Entered the "+destination+".");LockCursor();
+        }
+        public void DefeatDragon(){save.EndDragonDefeated=true;Notify("The dragon has fallen. The exit portal is open.");SaveWorld();}
+        public void Explode(Vector3 position,float radius)
+        {
+            Cell center=PlayerController.ToCell(position);
+            for(int y=-Mathf.CeilToInt(radius);y<=radius;y++)for(int z=-Mathf.CeilToInt(radius);z<=radius;z++)for(int x=-Mathf.CeilToInt(radius);x<=radius;x++)
+            {
+                if(x*x+y*y+z*z>radius*radius)continue;Cell p=center+new Cell(x,y,z);Block id=World.GetBlock(p);
+                if(id!=Block.Obsidian&&id!=Block.Bedrock&&id!=Block.EndFrame&&!float.IsInfinity(Blocks.Hardness(id))&&id!=Block.Air)World.Set(p,Block.Air);
+            }
+            float distance=Vector3.Distance(Player.transform.position,position);if(distance<radius*2)Player.Damage((1-distance/(radius*2))*16,position);
+            Mobs.DamageInRadius(position,radius*2,24);Notify("Explosion!");
+        }
+        public void DropLoot(Vector3 position,int id,int count)=>DropStack(position,new ItemStack(id,count));
+        public void DropStack(Vector3 position,ItemStack stack,float life=300)
+        {
+            if(stack==null||stack.Empty)return;int cap=Items.MaxStack(stack.Id);if(cap<=0)return;
+            int remaining=stack.Count;
+            while(remaining>0){int count=Mathf.Min(cap,remaining);remaining-=count;var obj=GameObject.CreatePrimitive(PrimitiveType.Cube);obj.name=Items.Name(stack.Id);Destroy(obj.GetComponent<Collider>());obj.transform.position=position;obj.transform.localScale=Vector3.one*.23f;var mat=new Material(Shader.Find("Standard"));uint rgb=Blocks.ColorRgb(Items.PlaceBlock(stack.Id));mat.color=new Color(((rgb>>16)&255)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f);obj.GetComponent<Renderer>().material=mat;var drop=obj.AddComponent<DroppedItem>();drop.Init(this,new ItemStack(stack.Id,count,stack.Durability),life);drops.Add(drop);}
+        }
+        private void OnApplicationFocus(bool focused){if(!focused&&World!=null&&!Player.Dead)SetPaused(true);}
+        private void OnApplicationQuit(){Hud?.Close();SaveWorld();}
+        private void OnDestroy(){fluids?.Dispose();if(Instance==this)Instance=null;}
+    }
+    public sealed class DroppedItem : MonoBehaviour
+    {
+        public ItemStack Stack;public float Life;private GameSession game;private float age,vertical;
+        public void Init(GameSession session,ItemStack stack,float life){game=session;Stack=stack;Life=life;}
+        private void Update()
+        {
+            if(!game.Playing)return;float dt=Mathf.Min(Time.deltaTime,.1f);Life-=dt;age+=dt;if(Life<=0){Destroy(gameObject);return;}
+            transform.Rotate(0,dt*55,0);Cell below=PlayerController.ToCell(transform.position-Vector3.up*.14f);Block id=game.World.GetBlock(below);
+            if(id==Block.Lava){Destroy(gameObject);return;}
+            if(!Blocks.IsSolid(id)){vertical=Mathf.Max(-10,vertical-16*dt);transform.position+=Vector3.up*vertical*dt;}else vertical=0;
+            if(age>1&&Vector3.Distance(transform.position,game.Player.transform.position+Vector3.up*.7f)<1.8f)
+            {
+                int left=game.Player.Inventory.Add(Stack.Id,Stack.Count,Stack.Durability);Stack.Count=left;if(left==0)Destroy(gameObject);
+            }
+        }
+    }
+}

@@ -20,7 +20,7 @@ for i, name in enumerate(names):
     x, y = (i % 4 - 1.5) * 2.65, (1 - i // 4) * 2.85
     for model in (['bed_head', 'bed_foot'] if name == 'bed' else [name]):
         before = set(bpy.data.objects)
-        bpy.ops.import_scene.gltf(filepath=str(ROOT / 'assets' / 'models' / f'{model}.glb'))
+        bpy.ops.import_scene.gltf(filepath=str(ROOT / 'ArtSource' / 'models' / f'{model}.glb'))
         imported = set(bpy.data.objects) - before
         for obj in imported:
             if not obj.parent:
@@ -63,6 +63,6 @@ scene.render.resolution_percentage = 100
 scene.world.color = (.25, .25, .25)
 scene.view_settings.view_transform = 'AgX'
 scene.render.image_settings.file_format = 'PNG'
-scene.render.filepath = str(ROOT / 'assets' / 'survival-model-gallery.png')
-bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'assets' / 'blender' / 'survival-gallery.blend'), compress=True)
+scene.render.filepath = str(ROOT / 'ArtSource' / 'survival-model-gallery.png')
+bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'ArtSource' / 'blender' / 'survival-gallery.blend'), compress=True)
 bpy.ops.render.render(write_still=True)

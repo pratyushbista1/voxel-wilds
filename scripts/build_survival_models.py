@@ -160,6 +160,6 @@ for name, build in builders.items():
     root = build()
     bpy.ops.object.select_all(action='SELECT')
     bpy.context.view_layer.objects.active = root
-    bpy.ops.export_scene.gltf(filepath=str(ROOT / 'assets' / 'models' / f'{name}.glb'), export_format='GLB', use_selection=True, export_yup=True, export_animations=False)
-    bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'assets' / 'blender' / f'{name}.blend'), compress=True)
+    bpy.ops.export_scene.gltf(filepath=str(ROOT / 'ArtSource' / 'models' / f'{name}.glb'), export_format='GLB', use_selection=True, export_yup=True, export_animations=False)
+    bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'ArtSource' / 'blender' / f'{name}.blend'), compress=True)
 print('Exported 12 survival models and editable Blender sources.')

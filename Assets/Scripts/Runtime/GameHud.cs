@@ -1,0 +1,412 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using UnityEngine;
+using VoxelWilds.Core;
+
+namespace VoxelWilds
+{
+    public sealed class GameHud : MonoBehaviour
+    {
+        public bool IsOpen => screen=="inventory"||screen=="crafting"||screen=="chest"||screen=="furnace";
+        public bool TextInputFocused { get; private set; }
+        private GameSession game;
+        private string screen="title",previousScreen="title",worldName="New world",seed="1453",search="",message="",tooltip="";
+        private float messageUntil,frames,frameTimer,fps;
+        private bool creative;
+        private ItemStack cursor;
+        private ItemStack[] grid=new ItemStack[4],chest;
+        private Furnace furnace;
+        private Vector2 worldsScroll,catalogScroll,recipesScroll;
+        private readonly List<WorldEntry> worlds=new List<WorldEntry>();
+        private readonly Dictionary<int,Texture2D> icons=new Dictionary<int,Texture2D>();
+        private GUIStyle text,title,heading,small,button,field,number;
+        private Texture2D heart;
+        private float width,height,scale;
+        private readonly HashSet<string> dragged=new HashSet<string>();
+        private int dragButton=-1;
+        private sealed class WorldEntry { public string Path,Name,Details; }
+        private static readonly Color Ink=new Color(.075f,.1f,.115f),Panel=new Color(.13f,.17f,.18f,.97f),Accent=new Color(.56f,.75f,.35f),Paper=new Color(.90f,.93f,.88f),Muted=new Color(.79f,.84f,.80f);
+        public void Init(GameSession session){game=session;RefreshWorlds();}
+        public void Notify(string value){message=value;messageUntil=Time.unscaledTime+7;}
+        public ItemStack[] CaptureTransient()=>grid.Concat(new[]{cursor}).Where(s=>s!=null&&!s.Empty).Select(s=>s.Clone()).ToArray();
+        public void ShowGame(){screen="game";ClearTextFocus();}
+        public void ShowTitle(){screen="title";ClearTextFocus();RefreshWorlds();}
+        public void OpenInventory(){Open("inventory",2);}
+        public void OpenCrafting(){Open("crafting",3);}
+        public void OpenChest(ItemStack[] slots){Open("chest",2);chest=slots;}
+        public void OpenFurnace(Furnace value){Open("furnace",2);furnace=value;}
+        private void Open(string value,int size){Close();screen=value;grid=new ItemStack[size*size];game.LockCursor();}
+        public void Close()
+        {
+            if(game?.Player!=null)
+            {
+                ReturnStack(cursor);cursor=null;
+                foreach(var stack in grid)ReturnStack(stack);Array.Clear(grid,0,grid.Length);
+            }
+            if(IsOpen||screen=="settings")screen=game?.World==null?"title":"game";
+            chest=null;furnace=null;dragged.Clear();dragButton=-1;
+            ClearTextFocus();
+            if(game?.Hud!=null)game.LockCursor();
+        }
+        private void ClearTextFocus(){TextInputFocused=false;GUIUtility.keyboardControl=0;}
+        private void UpdateTextFocus()
+        {
+            string focused=GUI.GetNameOfFocusedControl();
+            TextInputFocused=focused=="CreativeSearch"||focused=="WorldName"||focused=="WorldSeed";
+        }
+        private string TextField(Rect rect,string value,int maximum,string control)
+        {
+            GUI.SetNextControlName(control);string result=GUI.TextField(rect,value,maximum,field);UpdateTextFocus();return result;
+        }
+        private void ReturnStack(ItemStack stack)
+        {
+            if(stack==null||stack.Empty)return;int remaining=game.Player.Inventory.Add(stack.Id,stack.Count,stack.Durability);
+            if(remaining>0&&game.World!=null)game.DropStack(game.Player.transform.position+Vector3.up,new ItemStack(stack.Id,remaining,stack.Durability));
+        }
+        private void RefreshWorlds()
+        {
+            worlds.Clear();if(game?.SaveDirectory==null)return;
+            foreach(string path in Directory.GetFiles(game.SaveDirectory,"*.vws").OrderByDescending(File.GetLastWriteTimeUtc))
+            {
+                try{var data=JsonUtility.FromJson<SessionSave>(SaveFile.Read(path,out bool recovered));worlds.Add(new WorldEntry{Path=path,Name=data.Name,Details=(data.Creative?"Creative":"Survival")+"  /  "+(Dimension)data.Dimension+"  /  "+File.GetLastWriteTime(path).ToString("dd MMM yyyy")+(recovered?"  /  backup":"")});}
+                catch(Exception){worlds.Add(new WorldEntry{Path=path,Name=Path.GetFileNameWithoutExtension(path),Details="Unreadable world. Original file retained."});}
+            }
+        }
+        private void Update(){frames++;frameTimer+=Time.unscaledDeltaTime;if(frameTimer>=.5f){fps=frames/frameTimer;frames=frameTimer=0;}}
+        private void Styles()
+        {
+            if(text!=null)return;
+            text=new GUIStyle(GUI.skin.label){fontSize=17,normal={textColor=Paper},wordWrap=true};
+            title=new GUIStyle(text){fontSize=62,fontStyle=FontStyle.Bold,wordWrap=false};
+            heading=new GUIStyle(text){fontSize=25,fontStyle=FontStyle.Bold};
+            small=new GUIStyle(text){fontSize=13,normal={textColor=Muted}};
+            number=new GUIStyle(text){fontSize=15,alignment=TextAnchor.LowerRight,fontStyle=FontStyle.Bold};
+            button=new GUIStyle(GUI.skin.button){fontSize=17,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter};
+            field=new GUIStyle(GUI.skin.textField){fontSize=19,padding=new RectOffset(10,10,10,7)};
+            string[] pattern={"00000000","01100110","11111111","11111111","01111110","00111100","00011000","00000000"};
+            heart=new Texture2D(8,8){filterMode=FilterMode.Point};var pixels=new Color[64];
+            for(int y=0;y<8;y++)for(int x=0;x<8;x++)pixels[(7-y)*8+x]=pattern[y][x]=='1'?Color.white:Color.clear;heart.SetPixels(pixels);heart.Apply();
+        }
+        private void OnGUI()
+        {
+            if(game==null)return;Styles();scale=Mathf.Max(.01f,Mathf.Min(Screen.height/720f,Screen.width/960f));width=Screen.width/scale;height=Screen.height/scale;
+            GUI.matrix=Matrix4x4.Scale(new Vector3(scale,scale,1));tooltip="";UpdateTextFocus();
+            if(game.World==null&&screen!="settings")TitleScreen();
+            else if(screen=="settings")SettingsScreen();
+            else
+            {
+                Hud();
+                if(game.Player.Dead){Shade();Label(new Rect(width/2-220,250,440,70),"You died",title,TextAnchor.MiddleCenter);Label(new Rect(width/2-250,335,500,40),"Returning in "+Mathf.CeilToInt(game.DeathRemaining)+"…",text,TextAnchor.MiddleCenter);}
+                else if(game.Sleeping){Shade();Label(new Rect(width/2-250,300,500,50),"Sleeping until dawn",heading,TextAnchor.MiddleCenter);Label(new Rect(width/2-250,355,500,35),"Esc to leave bed",small,TextAnchor.MiddleCenter);}
+                else if(IsOpen)InventoryScreen();
+                else if(game.Paused)PauseScreen();
+            }
+            if(Time.unscaledTime<messageUntil)
+            {
+                Rect box=new Rect(width/2-330,28,660,60);Fill(box,new Color(.06f,.08f,.1f,.93f));Label(new Rect(box.x+16,box.y+9,box.width-32,44),message,text,TextAnchor.MiddleCenter);
+            }
+            if(!string.IsNullOrEmpty(game.LastSaveError))Label(new Rect(16,75,width-32,32),"SAVE ERROR: "+game.LastSaveError,text);
+            Vector2 mouse=Event.current.mousePosition;
+            if(cursor!=null&&!cursor.Empty&&IsOpen)DrawStack(new Rect(mouse.x+6,mouse.y+6,48,48),cursor);
+            else if(tooltip.Length>0)
+            {
+                float w=Mathf.Min(330,Mathf.Max(130,tooltip.Length*8));Rect tip=new Rect(Mathf.Min(mouse.x+14,width-w-8),Mathf.Min(mouse.y+20,670),w,38);Fill(tip,new Color(.03f,.04f,.055f,.97f));Label(new Rect(tip.x+8,tip.y+6,w-16,28),tooltip,small);
+            }
+            if(Event.current.type==EventType.MouseUp){dragged.Clear();dragButton=-1;}
+        }
+        private void TitleScreen()
+        {
+            Fill(new Rect(0,0,width,height),new Color(.075f,.115f,.15f));
+            for(int i=0;i<24;i++){float x=i*width/24;float h=85+(float)Math.Sin(i*.6f)*36;Fill(new Rect(x,height-h,width/24+1,h),new Color(.11f,.19f,.19f));Fill(new Rect(x,height-h, width/24+1,5),new Color(.20f,.30f,.23f));}
+            float left=Mathf.Max(34,(width-1100)/2);
+            Label(new Rect(left,42,600,28),"A WORLD OF YOUR OWN",small);
+            Label(new Rect(left-2,73,740,85),"VOXEL WILDS",title);
+            Label(new Rect(left,160,780,35),"Build a home. Explore the depths. Challenge the dragon.",text);
+            Rect create=new Rect(left,230,350,365);PanelBox(create,"Create a world");
+            Label(new Rect(left+22,292,305,24),"World name",small);worldName=TextField(new Rect(left+22,319,306,42),worldName,36,"WorldName");
+            Label(new Rect(left+22,371,305,24),"Seed",small);seed=TextField(new Rect(left+22,397,306,40),seed,20,"WorldSeed");
+            if(Button(new Rect(left+22,451,147,44),"Survival",!creative))creative=false;
+            if(Button(new Rect(left+180,451,148,44),"Creative",creative))creative=true;
+            if(Button(new Rect(left+22,521,306,49),"Create world",true)){int value;if(!int.TryParse(seed,out value)){unchecked{value=17;foreach(char c in seed)value=value*31+c;}}game.NewWorld(worldName,value,creative);}
+            float wx=left+374,ww=Mathf.Max(300,width-left-wx);
+            PanelBox(new Rect(wx,230,ww,365),"Saved worlds");
+            if(worlds.Count==0)Label(new Rect(wx+24,310,ww-48,120),"Your Unity worlds will appear here.\n\nOlder JavaScript worlds are kept separately and are not overwritten.",text);
+            else
+            {
+                worldsScroll=GUI.BeginScrollView(new Rect(wx+15,291,ww-30,287),worldsScroll,new Rect(0,0,ww-52,worlds.Count*76));
+                for(int i=0;i<worlds.Count;i++)
+                {
+                    var entry=worlds[i];Rect row=new Rect(0,i*76,ww-54,68);Fill(row,new Color(.09f,.13f,.14f));
+                    Label(new Rect(13,row.y+8,row.width-112,27),entry.Name,text);Label(new Rect(13,row.y+37,row.width-112,23),entry.Details,small);
+                    if(Button(new Rect(row.width-91,row.y+13,80,41),"Play")){game.LoadWorld(entry.Path);break;}
+                }
+                GUI.EndScrollView();
+            }
+            if(Button(new Rect(left,621,155,43),"Settings")){previousScreen="title";screen="settings";}
+            if(Button(new Rect(left+170,621,130,43),"Quit"))Application.Quit();
+            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.0",small,TextAnchor.MiddleRight);
+        }
+        private void Hud()
+        {
+            if(IsOpen)return;
+            var player=game.Player;float start=width/2-270,y=height-76;
+            if(!IsOpen&&!game.Paused&&!player.Dead)
+            {
+                Fill(new Rect(width/2-7,height/2-1,14,2),new Color(1,1,1,.85f));Fill(new Rect(width/2-1,height/2-7,2,14),new Color(1,1,1,.85f));
+                if(player.MiningProgress>0){Fill(new Rect(width/2-32,height/2+20,64,5),Ink);Fill(new Rect(width/2-32,height/2+20,64*Mathf.Clamp01(player.MiningProgress),5),Accent);}
+            }
+            for(int i=0;i<9;i++)Slot(new Rect(start+i*60,y,56,56),player.Inventory.Slots,i,false,i==player.Inventory.Selected);
+            if(!player.IsCreative)
+            {
+                for(int i=0;i<10;i++)
+                {
+                    GUI.color=new Color(.22f,.10f,.12f);GUI.DrawTexture(new Rect(start+i*23,y-28,21,21),heart);
+                    float amount=Mathf.Clamp01((player.Health-i*2)/2);if(amount>0){GUI.color=new Color(.91f,.24f,.28f);GUI.DrawTextureWithTexCoords(new Rect(start+i*23,y-28,21*amount,21),heart,new Rect(0,0,amount,1));}
+                    GUI.color=Color.white;Fill(new Rect(start+309+i*23,y-24,17,14),new Color(.22f,.14f,.09f));if(player.Hunger>i*2)Fill(new Rect(start+309+i*23,y-24,17*Mathf.Clamp01((player.Hunger-i*2)/2),14),new Color(.77f,.48f,.24f));
+                }
+                if(player.Air<10){Fill(new Rect(width/2-110,y-45,220,6),Ink);Fill(new Rect(width/2-110,y-45,220*player.Air/10,6),new Color(.4f,.77f,.95f));}
+            }
+            if(player.Inventory.Held!=null)BackedLabel(new Rect(width/2-260,y-65,520,30),Items.Name(player.Inventory.Held.Id),text,TextAnchor.MiddleCenter);
+            if(player.Inventory.Offhand!=null)DrawStack(new Rect(start-67,y,56,56),player.Inventory.Offhand);
+            BackedLabel(new Rect(17,14,700,24),game.WorldName+"  /  "+game.World.Dimension+"  /  "+(player.IsCreative?"Creative":"Survival"),small);
+            Vector3 p=player.transform.position;BackedLabel(new Rect(17,39,700,24),Mathf.FloorToInt(p.x)+", "+Mathf.FloorToInt(p.y)+", "+Mathf.FloorToInt(p.z)+"    "+Mathf.RoundToInt(fps)+" FPS",small);
+            BackedLabel(new Rect(17,height-32,800,25),"WASD move   Space jump   E inventory   Esc pause",small);
+            if(game.Mobs.DragonHealth>0)
+            {
+                Label(new Rect(width/2-250,79,500,29),"End Dragon",text,TextAnchor.MiddleCenter);Fill(new Rect(width/2-220,110,440,10),Ink);Fill(new Rect(width/2-220,110,440*game.Mobs.DragonHealth/game.Mobs.DragonMaxHealth,10),new Color(.65f,.31f,.80f));
+            }
+        }
+        private void PauseScreen()
+        {
+            Shade();float x=width/2-180;PanelBox(new Rect(x-25,176,410,372),"Game paused");
+            if(Button(new Rect(x,250,360,50),"Back to game",true))game.SetPaused(false);
+            if(Button(new Rect(x,313,360,50),"Settings")){previousScreen="pause";screen="settings";}
+            if(Button(new Rect(x,376,360,50),"Save world")){if(game.SaveWorld())Notify("World saved.");}
+            if(Button(new Rect(x,439,360,50),"Save and return to title"))game.ReturnToTitle();
+        }
+        private void InventoryScreen()
+        {
+            Shade();float sidebar=game.Player.IsCreative?294:screen=="inventory"||screen=="crafting"?274:0;
+            float x=(width-614-sidebar)/2+sidebar,y=72;var inventory=game.Player.Inventory;
+            PanelBox(new Rect(x,y,614,565),screen=="crafting"?"Crafting table":screen=="chest"?"Chest":screen=="furnace"?"Furnace":"Inventory");
+            if(screen=="chest")for(int i=0;i<27;i++)Slot(new Rect(x+32+i%9*60,y+63+i/9*59,55,55),chest,i,true);
+            else if(screen=="furnace")
+            {
+                var slots=new[]{furnace.Input,furnace.Fuel,furnace.Output};
+                Slot(new Rect(x+195,y+70,55,55),slots,0,true,accepts:s=>Furnace.SmeltingResult(s.Id)>0,region:"furnace");
+                Slot(new Rect(x+195,y+160,55,55),slots,1,true,accepts:s=>Furnace.FuelSeconds(s.Id)>0,region:"furnace");
+                Slot(new Rect(x+362,y+115,55,55),slots,2,true,false,true,region:"furnace");
+                furnace.Input=slots[0];furnace.Fuel=slots[1];furnace.Output=slots[2];
+                Label(new Rect(x+166,y+127,130,26),"Fuel",small,TextAnchor.MiddleCenter);Fill(new Rect(x+274,y+135,61,9),Ink);Fill(new Rect(x+274,y+135,61*furnace.CookProgress/Furnace.CookSeconds,9),Accent);
+                if(furnace.BurnTotal>0)Fill(new Rect(x+218,y+225,10,-60*furnace.BurnRemaining/furnace.BurnTotal),new Color(1,.54f,.17f));
+            }
+            else
+            {
+                int size=screen=="crafting"?3:2;
+                if(size==2)
+                {
+                    for(int i=0;i<4;i++)Slot(new Rect(x+30,y+57+i*46,42,42),inventory.Armor,i,true,false,false,i);
+                    var offhand=new[]{inventory.Offhand};Slot(new Rect(x+95,y+193,49,49),offhand,0,true,region:"offhand");inventory.Offhand=offhand[0];
+                    Label(new Rect(x+90,y+75,155,98),"Equipment\n\nArmor on the left\nOffhand below",small);
+                }
+                float gx=size==3?x+175:x+292;
+                Label(new Rect(gx,y+54,200,22),size+" × "+size+" crafting",small);
+                for(int i=0;i<grid.Length;i++)Slot(new Rect(gx+i%size*57,y+85+i/size*57,52,52),grid,i,true);
+                Rect output=new Rect(gx+size*57+40,y+111,57,57);Fill(output,Ink);var result=Crafting.Preview(grid,size);if(result!=null)DrawStack(output,result);
+                Label(new Rect(gx+size*57+10,y+126,32,30),">",heading);
+                if(output.Contains(Event.current.mousePosition)&&result!=null)
+                {
+                    tooltip=Items.Name(result.Id);
+                    if(Event.current.type==EventType.MouseDown)
+                    {
+                        if(Event.current.shift){int maximum=0;while(maximum++<64&&Crafting.TryCraftInto(grid,size,inventory)){} }
+                        else if(cursor==null || Inventory.Stackable(cursor,result)&&cursor.Count+result.Count<=Items.MaxStack(result.Id)){var crafted=Crafting.Craft(grid,size);if(cursor==null)cursor=crafted;else cursor.Count+=crafted.Count;}
+                        Event.current.Use();
+                    }
+                }
+            }
+            Label(new Rect(x+33,y+267,240,25),"Inventory",small);
+            for(int i=9;i<36;i++)Slot(new Rect(x+32+(i-9)%9*60,y+296+(i-9)/9*59,55,55),inventory.Slots,i,true);
+            for(int i=0;i<9;i++)Slot(new Rect(x+32+i*60,y+484,55,55),inventory.Slots,i,true,i==inventory.Selected);
+            Label(new Rect(x,y+574,614,26),"Left: move   Right: split/place one   Shift: transfer   1-9: swap   Esc: close",small,TextAnchor.MiddleCenter);
+            if(game.Player.IsCreative)CreativeCatalog(x-294,y);
+            else if(screen=="inventory"||screen=="crafting")RecipeBook(x-274,y);
+            if(Event.current.type==EventType.MouseDown && !new Rect(x,y,614,565).Contains(Event.current.mousePosition)&&Event.current.mousePosition.x>x+614&&cursor!=null)
+            {game.DropStack(game.Player.transform.position+game.Player.transform.forward+Vector3.up,cursor);cursor=null;Event.current.Use();}
+        }
+        private void CreativeCatalog(float x,float y)
+        {
+            PanelBox(new Rect(x,y,276,565),"Creative items");search=TextField(new Rect(x+14,y+59,248,34),search,40,"CreativeSearch");
+            var ids=Items.CreateCreativeInventory().Where(id=>Items.Name(id).IndexOf(search,StringComparison.OrdinalIgnoreCase)>=0).ToArray();
+            catalogScroll=GUI.BeginScrollView(new Rect(x+13,y+105,252,443),catalogScroll,new Rect(0,0,230,Mathf.CeilToInt(ids.Length/4f)*57));
+            for(int i=0;i<ids.Length;i++)
+            {
+                Rect rect=new Rect(i%4*56,i/4*57,51,51);Fill(rect,Ink);DrawStack(rect,new ItemStack(ids[i]));
+                if(rect.Contains(Event.current.mousePosition))
+                {
+                    tooltip=Items.Name(ids[i]);
+                    if(Event.current.type==EventType.MouseDown){ClearTextFocus();int count=Event.current.button==1?1:Items.MaxStack(ids[i]);ReturnStack(cursor);cursor=new ItemStack(ids[i],count);Event.current.Use();}
+                }
+            }
+            GUI.EndScrollView();
+        }
+        private void RecipeBook(float x,float y)
+        {
+            if(x<4)return;PanelBox(new Rect(x,y,254,565),"Recipes");
+            recipesScroll=GUI.BeginScrollView(new Rect(x+10,y+59,235,488),recipesScroll,new Rect(0,0,211,Crafting.Recipes.Count*41));
+            int index=0;int size=screen=="crafting"?3:2;
+            foreach(var recipe in Crafting.Recipes)
+            {
+                bool fits=recipe.Shapeless?recipe.Pattern.Length<=grid.Length:recipe.Width<=size&&recipe.Height<=size;
+                bool can=fits&&recipe.Ingredients.All(p=>game.Player.Inventory.Count(p.Key)>=p.Value);
+                GUI.enabled=can;
+                if(Button(new Rect(0,index++*41,210,36),recipe.Name))
+                {
+                    foreach(var stack in grid)ReturnStack(stack);Array.Clear(grid,0,grid.Length);
+                    if(recipe.Ingredients.All(p=>game.Player.Inventory.Count(p.Key)>=p.Value))
+                        for(int i=0;i<recipe.Pattern.Length;i++)if(recipe.Pattern[i]!=0){int destination=recipe.Shapeless?i:i/recipe.Width*size+i%recipe.Width;game.Player.Inventory.Remove(recipe.Pattern[i],1);grid[destination]=new ItemStack(recipe.Pattern[i]);}
+                }
+                GUI.enabled=true;
+            }
+            GUI.EndScrollView();
+        }
+        private void Slot(Rect rect,ItemStack[] items,int index,bool interactive,bool selected=false,bool output=false,int armor=-1,Func<ItemStack,bool> accepts=null,string region=null)
+        {
+            if(items==null||index<0||index>=items.Length)return;
+            Fill(rect,selected?Accent:new Color(.24f,.30f,.30f,.96f));Fill(new Rect(rect.x+2,rect.y+2,rect.width-4,rect.height-4),Ink);
+            var stack=items[index];if(stack!=null&&!stack.Empty)DrawStack(rect,stack);
+            if(!interactive||!rect.Contains(Event.current.mousePosition))return;
+            Fill(new Rect(rect.x+2,rect.y+2,rect.width-4,rect.height-4),new Color(1,1,1,.06f));
+            if(stack!=null)tooltip=Items.Name(stack.Id)+(Items.Durability(stack.Id)>0?"  "+stack.Durability+" / "+Items.Durability(stack.Id):"");
+            Event e=Event.current;
+            bool Accepts(ItemStack item)=>item==null||item.Empty||!output&&(armor<0||Items.ArmorSlot(item.Id)==armor)&&(accepts==null||accepts(item));
+            if(!TextInputFocused&&e.type==EventType.KeyDown && e.keyCode>=KeyCode.Alpha1&&e.keyCode<=KeyCode.Alpha9)
+            {
+                int hotbar=e.keyCode-KeyCode.Alpha1;var target=game.Player.Inventory.Slots[hotbar];
+                if(Accepts(target)){items[index]=target;game.Player.Inventory.Slots[hotbar]=stack;}e.Use();return;
+            }
+            bool dragging=e.type==EventType.MouseDrag&&cursor!=null&&dragButton>=0;
+            if(e.type!=EventType.MouseDown&&!dragging)return;
+            string key=(region??items.GetHashCode().ToString())+":"+index;
+            if(dragging&&!dragged.Add(key))return;
+            if(e.type==EventType.MouseDown){ClearTextFocus();dragButton=e.button;dragged.Clear();dragged.Add(key);}
+            if(e.shift&&stack!=null)
+            {
+                if(ReferenceEquals(items,game.Player.Inventory.Slots))
+                {
+                    int equipment=Items.ArmorSlot(stack.Id);
+                    if(chest!=null){int left=AddTo(chest,stack);stack.Count=left;}
+                    else if(furnace!=null)
+                    {
+                        bool smelt=Furnace.SmeltingResult(stack.Id)>0,fuel=Furnace.FuelSeconds(stack.Id)>0;
+                        if(smelt||fuel){var destination=smelt?new[]{furnace.Input}:new[]{furnace.Fuel};int left=AddTo(destination,stack);if(smelt)furnace.Input=destination[0];else furnace.Fuel=destination[0];stack.Count=left;}
+                        else game.Player.Inventory.QuickMove(index);
+                    }
+                    else if(equipment>=0&&game.Player.Inventory.Armor[equipment]==null){game.Player.Inventory.Armor[equipment]=stack;items[index]=null;}
+                    else game.Player.Inventory.QuickMove(index);
+                }
+                else{int left=game.Player.Inventory.Add(stack.Id,stack.Count,stack.Durability);stack.Count=left;}
+            }
+            else if(cursor==null)
+            {
+                if(stack!=null&&!stack.Empty){int take=e.button==1?(stack.Count+1)/2:stack.Count;cursor=new ItemStack(stack.Id,take,stack.Durability);stack.Count-=take;}
+            }
+            else if(output&&Inventory.Stackable(cursor,stack))
+            {
+                int amount=Mathf.Min(e.button==1?1:stack.Count,Items.MaxStack(cursor.Id)-cursor.Count);cursor.Count+=amount;stack.Count-=amount;
+            }
+            else if(Accepts(cursor))
+            {
+                int amount=e.button==1||dragging?1:cursor.Count;
+                if(stack==null||stack.Empty){items[index]=new ItemStack(cursor.Id,Mathf.Min(amount,Items.MaxStack(cursor.Id)),cursor.Durability);cursor.Count-=items[index].Count;}
+                else if(Inventory.Stackable(cursor,stack)){amount=Mathf.Min(amount,Items.MaxStack(stack.Id)-stack.Count);stack.Count+=amount;cursor.Count-=amount;}
+                else if(e.button==0&&!dragging){items[index]=cursor;cursor=stack;}
+            }
+            if(items[index]!=null&&items[index].Empty)items[index]=null;if(cursor!=null&&cursor.Empty)cursor=null;e.Use();
+        }
+        private int AddTo(ItemStack[] destination,ItemStack source)
+        {
+            int left=source.Count,cap=Items.MaxStack(source.Id);
+            for(int i=0;i<destination.Length;i++)if(Inventory.Stackable(destination[i],source)){int n=Mathf.Min(left,Mathf.Max(0,cap-destination[i].Count));destination[i].Count+=n;left-=n;}
+            for(int i=0;i<destination.Length&&left>0;i++)if(destination[i]==null||destination[i].Empty){int n=Mathf.Min(left,cap);destination[i]=new ItemStack(source.Id,n,source.Durability);left-=n;}
+            return left;
+        }
+        private void SettingsScreen()
+        {
+            if(game.World==null)Fill(new Rect(0,0,width,height),Ink);else Shade();float x=width/2-340;
+            PanelBox(new Rect(x,54,680,611),"Settings");var s=game.Settings;
+            Slider(x+30,120,"View distance",ref s.ViewDistance,2,8," chunks");
+            Slider(x+30,175,"Field of view",ref s.FieldOfView,55,110);
+            Slider(x+30,230,"Mouse sensitivity",ref s.Sensitivity,.2f,6);
+            Slider(x+30,285,"Brightness",ref s.Brightness,.35f,1.8f);
+            Slider(x+30,340,"Mob distance",ref s.EntityDistance,24,120);
+            string fpsText=s.Fps==0?"Unlimited":s.Fps.ToString();Label(new Rect(x+30,395,250,26),"Frame limit: "+fpsText,text);
+            int[] limits={0,30,60,90,120,144,165,240,360};if(Button(new Rect(x+352,393,297,35),fpsText)){int index=Array.IndexOf(limits,s.Fps);s.Fps=limits[(index+1)%limits.Length];game.ApplySettings();}
+            if(Button(new Rect(x+30,445,190,39),"Shadows: "+new[]{"Off","Hard","Soft"}[Mathf.Clamp(s.Shadows,0,2)])){s.Shadows=(s.Shadows+1)%3;game.ApplySettings();}
+            if(Button(new Rect(x+242,445,190,39),"Clouds: "+(s.Clouds?"On":"Off"))){s.Clouds=!s.Clouds;game.ApplySettings();}
+            if(Button(new Rect(x+457,445,190,39),"Fog: "+(s.Fog?"On":"Off"))){s.Fog=!s.Fog;game.ApplySettings();}
+            if(Button(new Rect(x+30,497,190,39),"View bob: "+(s.Bobbing?"On":"Off"))){s.Bobbing=!s.Bobbing;game.ApplySettings();}
+            if(Button(new Rect(x+242,497,190,39),"Fullscreen: "+(s.Fullscreen?"On":"Off"))){s.Fullscreen=!s.Fullscreen;game.ApplySettings();}
+            if(game.World!=null&&Button(new Rect(x+457,497,190,39),new[]{"Peaceful","Easy","Normal","Hard"}[game.Difficulty]))game.SetDifficulty((game.Difficulty+1)%4);
+            if(Button(new Rect(x+30,581,617,46),"Done",true)){game.ApplySettings();screen=previousScreen=="title"?"title":"game";game.LockCursor();}
+            Label(new Rect(x+30,545,617,27),"Unlimited FPS can increase GPU power use and heat.",small);
+        }
+        private void Slider(float x,float y,string label,ref float value,float min,float max)
+        {
+            Label(new Rect(x,y,300,26),label+": "+value.ToString("0.0"),text);float next=GUI.HorizontalSlider(new Rect(x+322,y+8,297,23),value,min,max);if(Mathf.Abs(next-value)>.001f){value=next;game.ApplySettings();}
+        }
+        private void Slider(float x,float y,string label,ref int value,int min,int max,string suffix)
+        {
+            Label(new Rect(x,y,300,26),label+": "+value+suffix,text);int next=Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(x+322,y+8,297,23),value,min,max));if(next!=value){value=next;game.ApplySettings();}
+        }
+        private void DrawStack(Rect rect,ItemStack stack)
+        {
+            if(stack==null||stack.Empty)return;GUI.DrawTexture(new Rect(rect.x+5,rect.y+4,rect.width-10,rect.height-10),Icon(stack.Id),ScaleMode.ScaleToFit);
+            if(stack.Count>1)Label(new Rect(rect.x+1,rect.y+2,rect.width-6,rect.height-5),stack.Count.ToString(),number);
+            int maximum=Items.Durability(stack.Id);if(maximum>0&&stack.Durability<maximum){Fill(new Rect(rect.x+7,rect.yMax-7,rect.width-14,4),Color.black);Fill(new Rect(rect.x+7,rect.yMax-7,(rect.width-14)*Mathf.Clamp01(stack.Durability/(float)maximum),4),Color.Lerp(new Color(.9f,.2f,.15f),Accent,stack.Durability/(float)maximum));}
+        }
+        private Texture2D Icon(int id)
+        {
+            if(icons.TryGetValue(id,out var cached))return cached;var tex=new Texture2D(24,24,TextureFormat.RGBA32,false){filterMode=FilterMode.Point};var pixels=new Color[576];
+            uint rgb=Blocks.ColorRgb(Items.PlaceBlock(id));Color c=new Color(((rgb>>16)&255)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f);
+            for(int y=0;y<24;y++)for(int x=0;x<24;x++)
+            {
+                Color pixel=Color.clear;
+                if(id<90)
+                {
+                    if(y>=5&&y<=16&&x>=3&&x<=20){pixel=c*(x<12?.67f:.84f);pixel.a=1;}
+                    if(y>=16&&y<=21&&Math.Abs(x-12)<=((23-y)*2)){pixel=c;pixel.a=1;}
+                    if((x+y)%7==0&&pixel.a>0)pixel*=.91f;
+                }
+                else if(Items.IsTool(id))
+                {
+                    if(Math.Abs(x-y)<2&&x>4&&x<18)pixel=new Color(.58f,.37f,.18f);
+                    if(Items.MiningTier(id)>0){if(y>=16&&y<=19&&x>=5&&x<=21||x>=19&&y>=11&&y<=18)pixel=id==Items.CrystalPickaxe?new Color(.3f,.88f,.85f):id==Items.WoodenPickaxe?new Color(.67f,.46f,.22f):new Color(.76f,.79f,.77f);}
+                    else if(x>10&&y>10&&Math.Abs(x-y)<3)pixel=new Color(.73f,.85f,.86f);
+                }
+                else if(id==Items.EmptyBucket||id==Items.WaterBucket||id==Items.LavaBucket)
+                {if(y>=4&&y<=17&&x>=5+(17-y)/5&&x<=19-(17-y)/5)pixel=(x<8||x>16||y<7)?new Color(.65f,.7f,.72f):id==Items.WaterBucket?new Color(.22f,.54f,.86f):id==Items.LavaBucket?new Color(1,.42f,.1f):new Color(.19f,.24f,.27f);}
+                else
+                {
+                    float dx=(x-12)/8f,dy=(y-12)/9f;if(dx*dx+dy*dy<1){pixel=Items.IsFood(id)?new Color(.78f,.43f,.22f):Items.SpawnMob(id)!=null?new Color(.47f,.62f,.45f):id==Items.EnderPearl||id==Items.EyeEnder?new Color(.18f,.66f,.62f):new Color(.77f,.78f,.65f);if((x*3+y*7+id)%11<3)pixel*=.64f;pixel.a=1;}
+                }
+                pixels[y*24+x]=pixel;
+            }
+            tex.SetPixels(pixels);tex.Apply();icons[id]=tex;return tex;
+        }
+        private void Shade()=>Fill(new Rect(0,0,width,height),new Color(.025f,.035f,.045f,.73f));
+        private void PanelBox(Rect rect,string label){Fill(rect,Panel);Fill(new Rect(rect.x,rect.y,rect.width,3),Accent);Label(new Rect(rect.x+22,rect.y+18,rect.width-44,35),label,heading);}
+        private bool Button(Rect rect,string label,bool active=false){Color old=GUI.backgroundColor;GUI.backgroundColor=active?Accent:new Color(.3f,.39f,.38f);bool clicked=GUI.Button(rect,label,button);GUI.backgroundColor=old;return clicked;}
+        private static void Fill(Rect rect,Color color){Color old=GUI.color;GUI.color=color;GUI.DrawTexture(rect,Texture2D.whiteTexture);GUI.color=old;}
+        private void BackedLabel(Rect rect,string value,GUIStyle style,TextAnchor alignment=TextAnchor.UpperLeft)
+        {
+            float span=Mathf.Min(rect.width,style.CalcSize(new GUIContent(value)).x+14);
+            float left=alignment==TextAnchor.MiddleCenter?rect.center.x-span/2:rect.x-6;
+            Fill(new Rect(left,rect.y-2,span,rect.height),new Color(.025f,.035f,.045f,.72f));
+            Label(rect,value,style,alignment);
+        }
+        private void Label(Rect rect,string value,GUIStyle style,TextAnchor alignment=TextAnchor.UpperLeft){var before=style.alignment;style.alignment=alignment;GUI.Label(rect,value,style);style.alignment=before;}
+    }
+}

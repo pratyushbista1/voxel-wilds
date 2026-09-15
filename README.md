@@ -1,216 +1,212 @@
 # Voxel Wilds
 
-A singleplayer voxel sandbox with seeded terrain, crafting, survival and a Nether dimension.
-Built with JavaScript, Three.js and Electron, with editable Blender models.
+A single-player voxel survival sandbox built with Unity 6 and C#. Explore the
+Overworld, the Nether and the End, build a home, craft equipment and fight a dragon.
+Models are original, editable Blender assets.
 
 ## Play on Windows
 
-Use one of the files in `release/1.2.0/`:
+Extract `Voxel-Wilds-Unity-Portable-2.0.0.zip` into a new folder, then run `Voxel Wilds.exe`.
+Keep the executable, `Voxel Wilds_Data`, `UnityPlayer.dll` and the other packaged
+files together. The executable alone is not a portable game.
 
-- `Voxel-Wilds-Portable-1.2.0.exe`: run directly. Keep it in a writable folder.
-- `Voxel-Wilds-Setup-1.2.0.exe`: install with desktop and Start menu shortcuts.
-  The installation includes `Uninstall Voxel Wilds.exe`.
-- `Voxel-Wilds-Uninstall-1.2.0.exe`: opens the installed game's uninstaller.
+The setup edition is `Voxel-Wilds-Unity-Setup-2.0.0.exe`. It installs a Start menu
+shortcut and an uninstaller. Builds are unsigned, so Windows may show a publisher
+warning. Check the download against `UNITY-PACKAGES-SHA256.txt` before sharing it.
+The installed edition saves to `%APPDATA%/VoxelWildsUnity/saves/` when launched
+from its shortcut. Uninstall through Windows Settings or `Uninstall Voxel Wilds.exe`
+in the install folder. Your worlds and unknown personal files are kept.
 
-Friends only need the portable EXE or the setup EXE. Node.js, Chrome, Blender and an
-internet connection are not required to play. The builds target 64-bit Windows.
-A mouse, keyboard and hardware-accelerated graphics are required.
-
-These builds are unsigned. Windows may display a publisher or SmartScreen warning.
-Share the checksum file along with the EXE so recipients can verify the download.
-
-To uninstall an installed copy, use Windows Settings > Apps > Voxel Wilds, or run
-`Uninstall Voxel Wilds.exe` from its installation folder. Saved worlds are retained.
-The portable version has no installer: remove its EXE when you no longer want it;
-keep its `userdata/` folder if you want to retain worlds.
+Unity, Blender, Node.js and an internet connection are not needed to play.
+The current build targets 64-bit Windows with DirectX 11 graphics, a mouse and a
+keyboard. Old 1.2.0 builds are separate from the Unity edition.
 
 ## Controls
 
-| Input                 | Action                                                    |
-| --------------------- | --------------------------------------------------------- |
-| W, A, S, D            | Move                                                      |
-| Mouse                 | Look                                                      |
-| Space                 | Jump or swim up                                           |
-| Ctrl                  | Sprint                                                    |
-| Shift                 | Sneak or fly down                                         |
-| Hold left mouse       | Mine or attack                                            |
-| Right mouse           | Place, use a bed, open a station/chest or ignite a portal |
-| Hold right mouse      | Eat food or block with a shield                           |
-| Middle mouse          | Pick a block in Creative                                  |
-| 1-9 or mouse wheel    | Select a hotbar slot                                      |
-| E                     | Inventory                                                 |
-| F                     | Swap selected item with offhand                           |
-| Q / Ctrl+Q            | Drop one item / a stack                                   |
-| Double-tap Space or G | Toggle Creative flight                                    |
-| H                     | Controls and crafting help                                |
-| Esc                   | Pause, close a screen or leave a bed                      |
-| F11                   | Fullscreen                                                |
+| Input | Action |
+| --- | --- |
+| W, A, S, D | Move |
+| Mouse | Look |
+| Space | Jump or swim upward |
+| Left Ctrl | Sprint |
+| Left Shift | Sneak or descend in Creative flight |
+| Left mouse | Mine or attack |
+| Right mouse | Place a block, use a station, bed, bucket or portal frame |
+| Hold right mouse | Eat, block with a shield, or draw a bow |
+| Release right mouse | Shoot a drawn bow |
+| 1-9 or mouse wheel | Select hotbar item |
+| E | Open or close inventory |
+| F | Swap held item and offhand |
+| Q / Ctrl+Q | Drop one item / a stack |
+| G or double-tap Space | Toggle Creative flight |
+| Middle mouse | Pick a block in Creative |
+| Esc | Pause, close a screen or leave a bed |
+| F11 | Toggle fullscreen |
 
-Walking into a block does not jump automatically. Creative is invulnerable;
-damage, hunger and tool wear apply in Survival.
+There is no automatic block jumping. Death drops carried items and respawns the
+player after three seconds. There are no respawn or teleport-to-spawn buttons.
 
-## Survival and the Nether
+## Worlds and survival
 
-The Overworld has a 20-minute day/night cycle. Zombies, skeletons, creepers and
-spiders spawn at night in Survival. Zombies and skeletons burn in direct daylight.
-Monsters chase, attack and take knockback. Skeletons shoot arrows, blazes throw
-fireballs and creepers explode. Shields block attacks and armor reduces damage.
+Worlds are seeded and generated in 16-block chunks. Terrain includes caves, ores,
+trees, rivers, villages, village chests and underground dungeons. A village is
+available near X 40, Z 40 in every seed. Villagers wander and flee nearby threats.
 
-Cows, pigs, sheep and chickens drop raw meat when killed. Pick it up, cook it in a
-furnace and hold right mouse to eat. Sheep also drop wool for beds.
+Survival includes damage, hunger, armor, shields, tool durability, mining, crafting,
+chests and furnaces. Cows, pigs, sheep and chickens drop meat. Cook raw meat with
+fuel in a furnace and hold right mouse to eat it. Creative provides an item catalog,
+flight, spawn eggs and invulnerability.
 
-Craft a bed at a table with three wool above three planks. Place it on two clear
-blocks of solid ground. Right-click it to set your respawn point. At night, with
-no monsters nearby, sleeping advances time to dawn. Esc leaves the bed early.
-After death, inventory drops and you respawn automatically after three seconds.
-An intact, unobstructed bed is used first; otherwise you return to the world spawn.
-There is no manual respawn button or pause-menu teleport to spawn.
+The Overworld has a 20-minute day/night cycle. Zombies, skeletons, creepers, spiders
+and endermen inhabit the world. Endermen normally leave you alone until stared at
+or attacked; they teleport to dry, clear ground and take damage from water.
+Skeletons shoot arrows, creepers explode and undead burn in sunlight.
 
-Mine obsidian using a crystal pickaxe. Build a frame four blocks wide and five
-high, with a two-by-three opening. The four corners are optional, so ten obsidian
-are enough. Craft flint and steel from flint and an iron ingot placed diagonally,
-then right-click the inside edge of the frame. Stand in the portal for four
-seconds in Survival, or briefly in Creative, to travel. Portals link both ways
-with an 8:1 coordinate scale. Each dimension keeps its own terrain edits, mobs,
-chests, furnaces and dropped items.
-
-Explore the Nether for lava, glowstone, nether gold, soul sand, fortress bridges
-and ruined bastions. Fortresses have wither skeletons, blazes, spawners and wart;
-bastions have piglins, brutes and treasure chests. A gold helmet keeps ordinary
-piglins neutral until provoked by an attack, opening a chest or mining gold.
-Brutes remain hostile. Beds explode in the Nether. Death there returns you to
-your Overworld bed or world spawn.
-
-Creative's Mobs category contains spawn eggs for the new animals and monsters.
+Place a bed on two supported blocks. Using it sets the respawn point. At night,
+sleeping with no nearby hostile mobs advances time to dawn. A missing bed falls
+back to world spawn. Beds explode outside the Overworld.
 
 ## Inventory and crafting
 
-The inventory follows Java Edition's layout: 27 storage slots, a nine-slot
-hotbar, four armor slots, an offhand slot and a 2x2 personal crafting grid.
-Right-click a placed crafting table for the 3x3 grid.
+The survival inventory has 27 storage slots, a nine-slot hotbar, four armor slots,
+an offhand slot and a 2x2 crafting grid. A placed crafting table opens a 3x3 grid.
+Chests contain 27 persistent slots.
 
-Left-click picks up, moves or merges a stack. Right-click takes half or places
-one item. Shift-click transfers items. Drag across slots to distribute a stack;
-right-drag places one per slot. Double-click collects matching items. Number keys
-swap the hovered slot with the corresponding hotbar slot.
+Left-click moves stacks; right-click takes half or places one. Shift-click transfers
+items, and number keys swap a hovered slot with the hotbar. Dragging distributes
+single items to visited slots. Recipe-book entries arrange ingredients that are
+available in the inventory. Click the crafting output to take it, or Shift-click
+to craft repeatedly into the inventory. Overflow is retained or dropped rather
+than discarded.
 
-Recipes use shaped patterns and allow translation and horizontal mirroring.
-The recipe book arranges available ingredients; click the output to craft,
-or Shift-click it to craft as many as fit. Larger recipes require a table.
+There are 41 recipes, including tools, armor, beds, buckets, bows and eyes of ender.
+Recipes support translated and horizontally mirrored patterns. Furnaces preserve
+fuel and cooking progress, and a lava fuel bucket returns an empty bucket.
 
-A log makes four planks. Four planks in a square make a table. Two planks placed
-vertically make four sticks. Pickaxes need three materials across the top row
-and two sticks below the center. A furnace needs eight cobblestone around an
-empty center. Furnaces smelt raw iron, clay, sand and other supported inputs,
-with fuel in the lower slot.
+## Water and lava
 
-Stacks hold up to 64 items; beds, tools, armor and shields occupy individual slots.
-Durability is saved per item and equipment breaks at zero. Full inventories
-leave excess items on the ground. Inventory screens do not pause Survival;
-press Esc to pause safely. On death, items drop and remain for five minutes.
-Chests have 27 persistent slots. Shift-click transfers stacks between a chest and
-your inventory. Breaking a chest spills its stored items.
+Fluids use scheduled block updates rather than static decorative blocks:
 
-## Graphics and difficulty
+- Sources feed downward streams and weakening horizontal flow.
+- Water spreads up to seven horizontal blocks; Overworld lava spreads three.
+- Water updates every five game ticks. Lava updates every thirty ticks in the
+  Overworld and every ten ticks in the Nether. There are twenty game ticks per second.
+- Removing a source drains dependent flow. Two neighboring water sources can form
+  a new source when the receiving block is supported.
+- Water touching a lava source makes obsidian; flowing lava makes cobblestone.
+  Lava falling into water makes stone.
+- Buckets collect source blocks only. Water evaporates in the Nether.
+- Players can swim, drown and take lava damage. Fluid states survive saving.
 
-Settings include FPS caps from 30 to 240 and Unlimited, render scale, brightness,
-view distance, fog distance, entity distance, field of view, shadow quality,
-particles, clouds, view bobbing and vignette. Lower render scale and disable
-shadows for better performance. Unlimited removes the game's frame cap; the
-browser may still limit rendering to the display refresh rate. The desktop build
-supports uncapped rendering. Higher limits can increase power use and GPU heat.
+These are tested Minecraft-inspired rules, not a bit-for-bit implementation of
+every Java or Bedrock Edition fluid edge case. Waterlogging, bubble columns and
+all plant/fluid interactions are not implemented.
 
-Peaceful removes hostile mobs. Easy, Normal and Hard adjust incoming mob damage.
-Creative remains invulnerable regardless of difficulty.
+## Dimensions, spawners and the dragon
 
-## Worlds and saves
+Build an obsidian frame four blocks wide and five blocks high, with a clear 2x3
+opening. The corners are optional. Ignite it with flint and steel. Standing in the
+portal transfers between the Overworld and Nether using an 8:1 coordinate scale.
+Each dimension retains its own edits, containers, dropped items and mobs.
 
-| Run mode                             | Save location                    |
-| ------------------------------------ | -------------------------------- |
-| Source launcher or `npm run desktop` | `Game/saves/`                    |
-| Portable EXE                         | `userdata/saves/` beside the EXE |
-| Installed EXE                        | `%APPDATA%/Voxel Wilds/saves/`   |
+The Nether contains lava, fortress bridges, bastions, treasure, blazes, piglins,
+brutes and wither skeletons. Mob spawners work while the player is within sixteen
+blocks, check local space and nearby mob limits, and require appropriate light.
+Torches can disable dark-spawning monsters; blaze spawners have different light rules.
 
-Worlds are JSON files. Autosave runs every 20 seconds of play, on pause, when
-closing inventory, and before quitting. Each world retains its previous valid
-save as a `.bak` file. An unreadable primary save falls back to that backup.
+The End entrance is near X 24, Y 33, Z 8. Use eyes of ender on twelve distinct portal
+frames to unlock it in Survival. Creative can enter directly.
 
-Version 1 and 2 worlds load and migrate to version 3 automatically, keeping terrain
-edits, inventory and equipment. Version 3 saves are not compatible with older game
-releases. Back up your worlds before upgrading. Close the game before copying saves between versions or PCs.
-Do not run two copies against the same save folder. Keep the game open if a save
-error appears.
+The End contains an island, obsidian pillars, destructible healing crystals and a
+200-health dragon. The dragon circles, strafes, perches and leaves damaging breath
+clouds. Use a bow to destroy elevated crystals and attack the dragon. Defeating it
+unlocks the exit. Destroyed crystals and the defeated boss remain recorded in the save.
+
+## Settings
+
+Adjust view distance, field of view, mouse sensitivity, brightness, entity distance,
+shadows, clouds, fog, view bobbing, fullscreen and difficulty. Frame limits include
+30 through 360 FPS and Unlimited. Unlimited disables VSync and the application's
+frame cap; it does not guarantee any particular frame rate and can increase heat.
+
+## Saves
+
+Unity worlds use checked `.vws` files. The default portable location is
+`saves/unity/` beside the executable. Editor play uses this project's `saves/unity/`.
+A non-writable location falls back to Unity's per-user application data directory.
+The `-voxel-saves <directory>` launch argument selects a different save directory.
+
+Autosave runs every twenty seconds of active play and when pausing or quitting.
+Each successful replacement retains a checked `.bak` file. Corrupt primary files
+can load from the backup; damaged originals are retained separately when saving.
+Do not run two copies against the same world files.
+
+JavaScript 1.x JSON worlds use a different terrain generator and are not loaded by
+this edition. They are preserved in their original folders. Keep the old executable
+to play them. The Unity conversion does not overwrite or upload personal worlds.
 
 ## Development
 
-Install Node.js 22.12 or newer, then run these commands from this folder:
+Open this repository's root folder directly in Unity Hub. It is the Unity project;
+there is no nested project folder. Use **Unity 6000.3.23f1** and activate an appropriate
+Unity license. Open `Assets/Scenes/Main.unity` and press Play.
+
+Gameplay lives in `Assets/Scripts/Runtime`. Engine-independent world, inventory,
+crafting, fluid and mob rules live in `Assets/Scripts/Core`. The built-in render
+pipeline draws culled chunk meshes with separate collision and fluid meshes.
+
+With the .NET 8 SDK installed:
 
 ```powershell
-npm ci
-npm run setup:desktop
-npm run desktop
+dotnet run --project Tests/CoreTests.csproj
 ```
 
-For browser play, use `npm start`. The launcher starts a loopback-only server and
-opens the game. Do not open `index.html` directly. `Play Voxel Wilds.bat` prefers
-the built desktop app when present, keeping the existing worlds in `Game/saves/`;
-otherwise it starts the browser version.
+Full local validation and building:
 
 ```powershell
-npm test
-npm run test:browser
-npm run test:desktop
-npm run format:check
-npm run build:win
-npm run test:portable
+./scripts/update-unity-meta.ps1
+./scripts/test-unity.ps1
+./scripts/build-unity.ps1 -SkipPackage
+./scripts/test-player.ps1
+./scripts/package-unity.ps1
+./scripts/test-unity-installer.ps1
 ```
 
-The browser tests use Chrome at its usual Windows installation path. Set
-`CHROME_PATH` to use a different installation. Tests use isolated worlds under
-`.cache/`; screenshots and reports go to `artifacts/`. Desktop tests run in a
-hidden window. Set `VOXEL_PACKAGED_EXE` to test the unpacked release executable.
-Set `VOXEL_TEST_FRAME_MS=180` to exercise browser input and physics with slow frame delivery.
+The editor scripts find Unity in `tools/Unity-6000.3.23f1/`, the standard Hub
+installation path, or `UNITY_EDITOR_PATH`. API compilation uses the installed
+Unity assemblies, not mock engine types. Player tests create disposable worlds
+under `.cache/` and retain logs and screenshots under `artifacts/`.
 
-`npm run test:installer` installs into an isolated test folder, runs the desktop
-test, then uninstalls it and verifies that its save survives. It refuses to
-overwrite an existing installed copy. `node scripts/check-saves.mjs` checks local
-world migrations on temporary copies without modifying the original saves.
+Packaging requires NSIS 3. Install it in its standard location, put `makensis.exe`
+on `PATH`, or pass `-Compiler <path-to-makensis.exe>` to `package-unity.ps1`.
+Use `build-unity.ps1 -SkipPackage` when you only need the native player.
 
-The Windows build creates an NSIS setup installer and a portable EXE.
-Build files, downloads and package caches stay in this project folder.
-A fresh build needs internet access to download dependencies and packaging tools.
+The default CI workflow runs engine-independent C# tests on Windows and Linux and
+checks Unity metadata. It does not claim to run the Unity editor or the player.
+The manually dispatched Windows build workflow additionally requires a supported
+Unity CI license and the secrets described by [GameCI's activation guide](https://game.ci/docs/github/activation/).
+Do not commit license files, credentials or local Unity settings.
 
-## Blender models
+## Blender assets
 
-`assets/models/` contains the nineteen GLB models loaded by the game.
-`assets/blender/` contains their editable sources and collection scenes.
-The game never runs Blender at runtime.
-
-![Original model collection](assets/model-gallery.png)
-
-![Survival model collection](assets/survival-model-gallery.png)
-
-To regenerate the assets with Blender 4.5:
+`Assets/Resources/Models/` contains 23 FBX models available to Unity. `ArtSource/`
+contains editable Blender scenes and the earlier GLB exports.
 
 ```powershell
-blender --background --factory-startup --python scripts/build_models.py
-blender --background --factory-startup --python scripts/build_survival_models.py
-blender --background --factory-startup --python scripts/render_survival_gallery.py
+./tools/blender-4.5.13-windows-x64/blender.exe --background --factory-startup --python scripts/build_unity_models.py
 ```
 
-Regeneration replaces the generated model files. Save hand-edited variants
-under different names first.
+The exporter rebuilds runtime models and the four new Blender sources. Save
+hand-edited variants under different names before regeneration.
 
 ## Scope and license
 
-This is an independent Minecraft-inspired sandbox, not a complete Minecraft
-implementation. It includes the crafting patterns for its available items, not
-Minecraft's entire item catalog. Structures and models are original interpretations,
-not copies of Minecraft assets. There is no End dimension or Ender Dragon,
-multiplayer, redstone, animal breeding, full farming system, enchanting, brewing
-or fluid simulation. Water and lava are static, portals use the four-by-five frame,
-and building is limited to Y 1-71. Only the mobs and mechanics described above are
-implemented; this is not full Minecraft feature parity.
+This is an independent Minecraft-inspired game, not Minecraft or an exact replica.
+It does not contain Mojang textures, sounds or models. Multiplayer, redstone,
+enchanting, brewing, villager trading, full crop growth, animal breeding and complete
+Minecraft content parity are not implemented. Some animations, terrain and combat
+rules differ. The original 1.x browser and Electron code remains in repository
+history; the active application is Unity C#.
 
-Code and original assets use the [MIT license](LICENSE).
-See [third-party notices](THIRD_PARTY_NOTICES.md) for dependencies and trademarks.
+Code and original assets use the [MIT license](LICENSE). Unity is separately
+licensed by Unity Technologies. See [third-party notices](THIRD_PARTY_NOTICES.md).

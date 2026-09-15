@@ -5,8 +5,8 @@ import bpy
 from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'assets' / 'models'
-BLENDS = ROOT / 'assets' / 'blender'
+OUT = ROOT / 'ArtSource' / 'models'
+BLENDS = ROOT / 'ArtSource' / 'blender'
 OUT.mkdir(parents=True, exist_ok=True)
 BLENDS.mkdir(parents=True, exist_ok=True)
 bpy.ops.object.select_all(action='SELECT')
@@ -219,7 +219,7 @@ scene.render.resolution_x=1400;scene.render.resolution_y=920;scene.render.resolu
 scene.world.color=(.3,.3,.3)
 scene.view_settings.view_transform='AgX'
 scene.render.image_settings.file_format='PNG'
-scene.render.filepath=str(ROOT/'assets'/'model-gallery.png')
+scene.render.filepath=str(ROOT/'ArtSource'/'model-gallery.png')
 bpy.ops.wm.save_as_mainfile(filepath=str(BLENDS/'voxel-wilds-gallery.blend'))
 bpy.ops.render.render(write_still=True)
 print('EXPORTED 7 ORIGINAL MODELS, 8 BLEND FILES, AND MODEL GALLERY')

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.0
+
+- Replaced the active browser and Electron application with a Unity 6 C# project.
+- Added native Windows builds, a portable ZIP and a per-user installer with an uninstaller.
+- Added endermen, villagers, an End island, healing crystals and a dragon boss fight.
+- Added villages, dungeons, fortress and bastion structures, and active mob spawners.
+- Added scheduled water and lava flow, draining sources, buckets and fluid reactions.
+- Rebuilt inventory, crafting, armor, offhand, chests, furnaces and tool durability.
+- Preserved automatic respawning, bed respawn points, sleeping and the day/night cycle.
+- Added separate dimension state and checked saves with recoverable backups.
+- Kept cursor and crafting-grid items safe during autosave and reload.
+- Imported 23 original FBX models, including four new editable Blender models.
+- Added graphics controls including Unlimited FPS, shadows, fog, clouds and view distance.
+- Added engine-independent tests, real Unity API compilation, editor checks and native gameplay tests.
+- Preserved legacy source in history and local backups. Old JSON worlds remain separate and are not converted.
+
 ## 1.2.0
 
 - Added automatic respawning after death and removed both manual spawn buttons.

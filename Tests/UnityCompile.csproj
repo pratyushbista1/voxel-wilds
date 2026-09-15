@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>UNITY_EDITOR;UNITY_STANDALONE;UNITY_STANDALONE_WIN;UNITY_6000_0_OR_NEWER</DefineConstants>
+    <UnityEditorPath Condition="'$(UnityEditorPath)' == '' and '$(UNITY_EDITOR_PATH)' != ''">$(UNITY_EDITOR_PATH)</UnityEditorPath>
+    <UnityEditorPath Condition="'$(UnityEditorPath)' == ''">$(MSBuildThisFileDirectory)../tools/Unity-6000.3.23f1/Editor/Unity.exe</UnityEditorPath>
+    <UnityEditorDirectory>$([System.IO.Path]::GetDirectoryName('$(UnityEditorPath)'))</UnityEditorDirectory>
+    <UnityManagedDirectory>$(UnityEditorDirectory)/Data/Managed</UnityManagedDirectory>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Assets/Scripts/**/*.cs" />
+    <Compile Include="../Assets/Editor/**/*.cs" />
+    <Reference Include="$(UnityManagedDirectory)/UnityEngine.dll;$(UnityManagedDirectory)/UnityEditor.dll;$(UnityManagedDirectory)/UnityEngine/UnityEngine*.dll;$(UnityManagedDirectory)/UnityEngine/UnityEditor*.dll">
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="CheckUnityAssemblies" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(UnityManagedDirectory)/UnityEditor.dll')" Text="Unity editor managed assemblies not found. Pass -p:UnityEditorPath=absolute/path/to/Editor/Unity.exe." />
+  </Target>
+</Project>

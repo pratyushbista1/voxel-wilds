@@ -1,35 +1,41 @@
-name: Windows release build
+name: Unity Windows build
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
-    runs-on: windows-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run setup:desktop
-      - run: npm test
-      - run: npm run test:desktop
-      - run: npm run build:win
-      - name: Test packaged app
-        shell: pwsh
+      - name: Check build license configuration
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $env:VOXEL_PACKAGED_EXE = Join-Path $PWD "release/$version/win-unpacked/Voxel Wilds.exe"
-          npm run test:desktop
-      - run: npm run test:portable
+          if [ -z "$UNITY_EMAIL" ] || [ -z "$UNITY_PASSWORD" ] || { [ -z "$UNITY_LICENSE" ] && [ -z "$UNITY_SERIAL" ]; }; then
+            echo 'Configure a supported Unity CI license and the required repository secrets before dispatching this optional build. Local builds use scripts/build-unity.ps1 and the activated Unity Hub license.'
+            exit 1
+          fi
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          unityVersion: 6000.3.23f1
+          targetPlatform: StandaloneWindows64
+          buildMethod: VoxelWilds.Editor.BuildGame.BuildWindows
+          versioning: Custom
+          version: 2.0.0
+          allowDirtyBuild: true
       - uses: actions/upload-artifact@v6
         with:
-          name: Voxel-Wilds-Windows
-          path: |
-            release/*/*.exe
-            release/*/SHA256SUMS.txt
-            release/*/README.txt
+          name: Voxel-Wilds-Unity-Windows
+          path: release/2.0.0/Windows/
+          if-no-files-found: error
           retention-days: 14

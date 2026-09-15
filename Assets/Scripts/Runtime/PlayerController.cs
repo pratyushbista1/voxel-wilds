@@ -1,0 +1,211 @@
+using UnityEngine;
+using VoxelWilds.Core;
+
+namespace VoxelWilds
+{
+    public sealed class PlayerController : MonoBehaviour
+    {
+        public Camera Eye { get; private set; }
+        public Inventory Inventory = new Inventory();
+        public bool IsCreative, Flying;
+        public float Health = 20, Hunger = 20, Air = 10, Saturation = 5;
+        public bool Dead => Health <= 0;
+        public float MiningProgress { get; private set; }
+        public bool HasTarget { get; private set; }
+        public Cell Target { get; private set; }
+        public Cell Adjacent { get; private set; }
+        public float Pitch;
+        public bool InWater { get; private set; }
+        public bool Blocking => game.Playing && !game.Hud.IsOpen && Input.GetMouseButton(1) && (Inventory.Held?.Id == Items.Shield || Inventory.Offhand?.Id == Items.Shield);
+        private GameSession game;
+        private CharacterController controller;
+        private Vector3 velocity;
+        private float hitCooldown, attackCooldown, useCooldown, regeneration, foodTimer, hazardTimer, fallStart, previousSpace, bowCharge;
+        private Cell mining;
+        private Transform hand;
+        private int handItem = -1;
+        private float gait, swing;
+        private LineRenderer selection;
+        public void Init(GameSession session)
+        {
+            game=session;
+            controller=gameObject.AddComponent<CharacterController>();controller.height=1.8f;controller.radius=.3f;controller.center=new Vector3(0,.9f,0);controller.stepOffset=.05f;controller.skinWidth=.025f;controller.slopeLimit=45;
+            var cameraObject=new GameObject("Eyes");cameraObject.transform.SetParent(transform,false);cameraObject.transform.localPosition=new Vector3(0,1.62f,0);
+            Eye=cameraObject.AddComponent<Camera>();Eye.clearFlags=CameraClearFlags.SolidColor;Eye.nearClipPlane=.055f;Eye.farClipPlane=200;Eye.tag="MainCamera";cameraObject.AddComponent<AudioListener>();
+            hand=new GameObject("Held item").transform;hand.SetParent(Eye.transform,false);
+            var outline=new GameObject("Target outline");selection=outline.AddComponent<LineRenderer>();selection.material=new Material(Shader.Find("Sprites/Default"));selection.startColor=selection.endColor=new Color(.08f,.10f,.1f,.8f);selection.startWidth=selection.endWidth=.012f;selection.positionCount=16;selection.useWorldSpace=true;
+        }
+        public void Teleport(Vector3 position)
+        {
+            controller.enabled=false;transform.position=position;controller.enabled=true;velocity=Vector3.zero;fallStart=position.y;MiningProgress=0;Physics.SyncTransforms();
+        }
+        public void ResetVitals(){Health=Hunger=20;Air=10;Saturation=5;hitCooldown=1;foodTimer=hazardTimer=regeneration=0;Flying=false;}
+        private void Update()
+        {
+            if(game==null || game.World==null)return;
+            float dt=Mathf.Min(Time.deltaTime,.1f);hitCooldown-=dt;attackCooldown-=dt;useCooldown-=dt;
+            if(!game.Playing){selection.enabled=false;return;}
+            var feet=ToCell(transform.position+Vector3.up*.1f);Block fluid=game.World.GetBlock(feet);
+            InWater=fluid==Block.Water;bool swimming=InWater||fluid==Block.Lava;
+            bool control=!game.Hud.IsOpen;
+            if(control)
+            {
+                float mx=Input.GetAxisRaw("Mouse X")*game.Settings.Sensitivity,my=Input.GetAxisRaw("Mouse Y")*game.Settings.Sensitivity;
+                transform.Rotate(0,mx,0);Pitch=Mathf.Clamp(Pitch-my,-89,89);Eye.transform.localRotation=Quaternion.Euler(Pitch,0,0);
+                for(int i=0;i<9;i++)if(Input.GetKeyDown(KeyCode.Alpha1+i))Inventory.Selected=i;
+                float scroll=Input.mouseScrollDelta.y;if(scroll!=0)Inventory.Selected=(Inventory.Selected+(scroll>0?8:1))%9;
+                if(Input.GetKeyDown(KeyCode.F)){var held=Inventory.Held;Inventory.Slots[Inventory.Selected]=Inventory.Offhand;Inventory.Offhand=held;}
+                if(Input.GetKeyDown(KeyCode.Q))DropHeld(Input.GetKey(KeyCode.LeftControl));
+                if(IsCreative && Input.GetKeyDown(KeyCode.G))Flying=!Flying;
+                if(Input.GetKeyDown(KeyCode.Space)) { if(IsCreative && Time.time-previousSpace<.27f)Flying=!Flying;previousSpace=Time.time; }
+            }
+            Vector3 input=Vector3.zero;
+            if(control)input=new Vector3((Input.GetKey(KeyCode.D)?1:0)-(Input.GetKey(KeyCode.A)?1:0),0,(Input.GetKey(KeyCode.W)?1:0)-(Input.GetKey(KeyCode.S)?1:0));
+            bool sprint=control&&Input.GetKey(KeyCode.LeftControl)&&Hunger>6, sneak=control&&Input.GetKey(KeyCode.LeftShift);
+            float speed=Flying?10:swimming?2.5f:sneak?1.5f:sprint?5.8f:4.3f;
+            Vector3 move=transform.TransformDirection(Vector3.ClampMagnitude(input,1))*speed;
+            bool grounded=controller.isGrounded;
+            if(Flying){velocity.y=control?((Input.GetKey(KeyCode.Space)?1:0)-(sneak?1:0))*speed:0;}
+            else if(swimming){velocity.y=Mathf.MoveTowards(velocity.y,control&&Input.GetKey(KeyCode.Space)?3:-1.8f,12*dt);fallStart=transform.position.y;}
+            else
+            {
+                if(grounded)
+                {
+                    if(velocity.y < -12 && fallStart-transform.position.y>3)Damage(Mathf.Floor(fallStart-transform.position.y-3),transform.position);
+                    fallStart=transform.position.y;velocity.y=-2;
+                    if(control&&Input.GetKeyDown(KeyCode.Space)){velocity.y=8.2f;fallStart=transform.position.y;}
+                }
+                else {fallStart=Mathf.Max(fallStart,transform.position.y);velocity.y=Mathf.Max(-45,velocity.y-24*dt);}
+            }
+            if(sneak&&grounded&&!Flying&&!swimming)
+            {
+                Vector3 projected=transform.position+move*dt;
+                if(!game.World.Solid(ToCell(projected+new Vector3(0,-.2f,0))))move=Vector3.zero;
+            }
+            controller.Move((move+velocity)*dt);velocity.x=Mathf.MoveTowards(velocity.x,0,12*dt);velocity.z=Mathf.MoveTowards(velocity.z,0,12*dt);
+            Vitals(dt,move.magnitude,fluid);
+            if(transform.position.y < -20)Damage(100,transform.position);
+            if(!control){MiningProgress=0;HasTarget=false;selection.enabled=false;bowCharge=0;AnimateHand(dt,false);return;}
+            HasTarget=Trace(Eye.transform.position,Eye.transform.forward,IsCreative?6:4.5f,out var hit,out var previous,Inventory.Held?.Id==Items.EmptyBucket);
+            Target=hit;Adjacent=previous;DrawSelection();
+            if(Input.GetMouseButton(0))MineOrAttack(dt);else MiningProgress=0;
+            if(Input.GetMouseButtonDown(2)&&IsCreative&&HasTarget){int id=(int)game.World.GetBlock(Target);Inventory.Slots[Inventory.Selected]=new ItemStack(id,Items.MaxStack(id));}
+            int item=Inventory.Held?.Id??0;
+            if(item==Items.Bow)
+            {
+                if(Input.GetMouseButton(1))bowCharge=Mathf.Min(1,bowCharge+dt);
+                if(Input.GetMouseButtonUp(1))
+                {
+                    if(bowCharge>.15f&&(IsCreative||Inventory.Remove(Items.Arrow,1))){game.Mobs.ShootArrow(Eye.transform.position+Eye.transform.forward*.5f,Eye.transform.forward,bowCharge);if(!IsCreative)Inventory.WearSelected(1);swing=1;}
+                    bowCharge=0;
+                }
+            }
+            else if(Input.GetMouseButton(1)&&Items.IsFood(item))
+            {
+                if(Hunger<20){foodTimer+=dt;if(foodTimer>=1.6f){Hunger=Mathf.Min(20,Hunger+Items.Food(item));Saturation=Mathf.Min(20,Saturation+Items.Saturation(item));ConsumeHeld();foodTimer=0;}}else foodTimer=0;
+            }
+            else if(Input.GetMouseButtonDown(1)&&useCooldown<=0){if(game.Use(HasTarget,Target,Adjacent)){useCooldown=.2f;swing=1;}}
+            else foodTimer=0;
+            AnimateHand(dt,move.sqrMagnitude>1&&grounded);
+        }
+        private void Vitals(float dt,float moving,Block fluid)
+        {
+            if(IsCreative){Health=Hunger=20;Air=10;return;}
+            if(game.Difficulty==0){Health=Mathf.Min(20,Health+dt*.5f);Hunger=Mathf.Min(20,Hunger+dt);}
+            if(moving>1){Saturation-=dt*.025f;if(Saturation<0){Hunger=Mathf.Max(0,Hunger+Saturation);Saturation=0;}}
+            Block head=game.World.GetBlock(ToCell(Eye.transform.position));
+            Air=head==Block.Water?Mathf.Max(0,Air-dt):Mathf.Min(10,Air+dt*4);
+            hazardTimer+=dt;
+            if(hazardTimer>=1)
+            {
+                hazardTimer-=1;
+                if(fluid==Block.Lava||head==Block.Lava)Damage(4,transform.position);
+                else if(Air<=0)Damage(2,transform.position);
+                else if(Hunger<=0&&(game.Difficulty>=3||Health>1))Damage(1,transform.position);
+            }
+            if(Hunger>=18&&Health<20){regeneration+=dt;if(regeneration>=4){Health=Mathf.Min(20,Health+1);Hunger=Mathf.Max(0,Hunger-.5f);regeneration=0;}}else regeneration=0;
+        }
+        public void Damage(float amount,Vector3 source)
+        {
+            if(IsCreative||Dead||hitCooldown>0||amount<=0)return;
+            if(Blocking)
+            {
+                Vector3 toward=source-transform.position;
+                if(toward.sqrMagnitude>.01f&&Vector3.Dot(transform.forward,toward.normalized)>.1f)
+                {
+                    var shield=Inventory.Held?.Id==Items.Shield?Inventory.Held:Inventory.Offhand;
+                    shield.Durability-=Mathf.Max(1,Mathf.CeilToInt(amount));
+                    if(shield.Durability<=0){if(ReferenceEquals(shield,Inventory.Offhand))Inventory.Offhand=null;else Inventory.Slots[Inventory.Selected]=null;}
+                    hitCooldown=.35f;return;
+                }
+            }
+            int armor=0;
+            for(int i=0;i<Inventory.Armor.Length;i++)if(Inventory.Armor[i]!=null){armor+=Items.Protection(Inventory.Armor[i].Id);Inventory.Armor[i].Durability--;if(Inventory.Armor[i].Durability<=0)Inventory.Armor[i]=null;}
+            Health=Mathf.Max(0,Health-amount*(1-Mathf.Min(20,armor)*.04f));hitCooldown=.5f;
+            Vector3 knock=transform.position-source;knock.y=0;if(knock.sqrMagnitude>.01f)velocity+=knock.normalized*4+Vector3.up*2;
+            if(Dead)game.Die();
+        }
+        public void ConsumeHeld(int amount=1)
+        {
+            if(IsCreative)return;var stack=Inventory.Held;if(stack==null)return;stack.Count-=amount;if(stack.Empty)Inventory.Slots[Inventory.Selected]=null;
+        }
+        public void DropHeld(bool all)
+        {
+            var stack=Inventory.Held;if(stack==null)return;int count=all?stack.Count:1;
+            game.DropStack(transform.position+transform.forward*.8f+Vector3.up,new ItemStack(stack.Id,count,stack.Durability));stack.Count-=count;if(stack.Empty)Inventory.Slots[Inventory.Selected]=null;
+        }
+        private void MineOrAttack(float dt)
+        {
+            if(attackCooldown<=0 && game.Mobs.Attack(new Ray(Eye.transform.position,Eye.transform.forward),IsCreative?6:3.3f,Items.AttackDamage(Inventory.Held?.Id??0)))
+            {attackCooldown=.55f;swing=1;MiningProgress=0;if(!IsCreative)Inventory.WearSelected(1);return;}
+            if(!HasTarget){MiningProgress=0;return;}
+            if(Target!=mining){mining=Target;MiningProgress=0;}
+            Block id=game.World.GetBlock(Target);float hardness=Blocks.Hardness(id);
+            if(float.IsInfinity(hardness))return;
+            float duration=IsCreative?.12f:Mathf.Max(.1f,hardness*(Items.CanHarvest(Inventory.Held?.Id??0,id)?1.5f:5)/Items.MiningSpeed(Inventory.Held?.Id??0,id));
+            MiningProgress+=dt/duration;swing=Mathf.Max(swing,.6f);
+            if(MiningProgress>=1){game.BreakBlock(Target);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(1);}
+        }
+        public bool Trace(Vector3 origin,Vector3 direction,float range,out Cell hit,out Cell previous,bool fluids=false)
+        {
+            previous=ToCell(origin);hit=previous;
+            for(float distance=0;distance<=range;distance+=.025f)
+            {
+                Cell cell=ToCell(origin+direction*distance);Block id=game.World.GetBlock(cell);
+                if(id!=Block.Air && (fluids||!Blocks.IsFluid(id)) && id!=Block.PortalX&&id!=Block.PortalZ&&id!=Block.EndPortal){hit=cell;return true;}
+                previous=cell;
+            }
+            return false;
+        }
+        private void AnimateHand(float dt,bool moving)
+        {
+            int item=Inventory.Held?.Id??0;
+            if(item!=handItem)
+            {
+                handItem=item;foreach(Transform child in hand)Destroy(child.gameObject);
+                string model=item==Items.IronSword||item==Items.CrystalSword?"sword":Items.MiningTier(item)>0?"pickaxe":null;
+                GameObject prefab=model==null?null:Resources.Load<GameObject>("Models/"+model);
+                GameObject visual=prefab?Instantiate(prefab,hand):GameObject.CreatePrimitive(PrimitiveType.Cube);
+                if(!prefab)
+                {
+                    visual.transform.SetParent(hand,false);Destroy(visual.GetComponent<Collider>());var mat=new Material(Shader.Find("Standard"));uint color=Blocks.ColorRgb(Items.PlaceBlock(item));mat.color=item==0?new Color(.65f,.44f,.3f):new Color(((color>>16)&255)/255f,((color>>8)&255)/255f,(color&255)/255f);visual.GetComponent<Renderer>().material=mat;
+                }
+                visual.transform.localScale=Vector3.one*(prefab?.38f:.2f);
+            }
+            gait+=dt*(moving?10:1);swing=Mathf.MoveTowards(swing,0,dt*4);
+            float bob=game.Settings.Bobbing&&moving?Mathf.Sin(gait)*.03f:0;
+            Eye.transform.localPosition=Vector3.Lerp(Eye.transform.localPosition,new Vector3(0,1.62f+bob,0),dt*12);
+            hand.localPosition=new Vector3(.42f-swing*.12f,-.34f+bob-swing*.1f,.65f);
+            hand.localRotation=Quaternion.Euler(10+swing*55,-20,8+swing*25);
+        }
+        private void DrawSelection()
+        {
+            selection.enabled=HasTarget;if(!HasTarget)return;
+            Vector3 p=new Vector3(Target.X,Target.Y,Target.Z)-Vector3.one*.003f;float s=1.006f;
+            Vector3[] points={new Vector3(0,0,0),new Vector3(1,0,0),new Vector3(1,0,1),new Vector3(0,0,1),new Vector3(0,0,0),new Vector3(0,1,0),new Vector3(1,1,0),new Vector3(1,0,0),new Vector3(1,1,0),new Vector3(1,1,1),new Vector3(1,0,1),new Vector3(1,1,1),new Vector3(0,1,1),new Vector3(0,0,1),new Vector3(0,1,1),new Vector3(0,1,0)};
+            for(int i=0;i<points.Length;i++)selection.SetPosition(i,p+points[i]*s);
+        }
+        public static Cell ToCell(Vector3 p)=>new Cell(Mathf.FloorToInt(p.x),Mathf.FloorToInt(p.y),Mathf.FloorToInt(p.z));
+        private void OnDestroy(){if(selection)Destroy(selection.gameObject);}
+    }
+}
