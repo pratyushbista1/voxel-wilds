@@ -1,6 +1,14 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+if exist "release\2.0.2\Windows\Voxel Wilds.exe" (
+  start "" "release\2.0.2\Windows\Voxel Wilds.exe" -voxel-saves "%~dp0saves\unity"
+  exit /b 0
+)
+if exist "release\2.0.1\Windows\Voxel Wilds.exe" (
+  start "" "release\2.0.1\Windows\Voxel Wilds.exe" -voxel-saves "%~dp0saves\unity"
+  exit /b 0
+)
 if exist "release\2.0.0\Windows\Voxel Wilds.exe" (
   start "" "release\2.0.0\Windows\Voxel Wilds.exe" -voxel-saves "%~dp0saves\unity"
   exit /b 0

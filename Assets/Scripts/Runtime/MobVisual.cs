@@ -12,6 +12,9 @@ namespace VoxelWilds
             public Quaternion Rest;
             public string Name;
             public int Side;
+            public int Index;
+            public int GaitSign;
+            public Vector3 Right, Up, Forward;
         }
         readonly List<Joint> joints = new List<Joint>();
         readonly List<Renderer> renderers = new List<Renderer>();
@@ -20,7 +23,7 @@ namespace VoxelWilds
         Transform model;
         Vector3 restPosition;
         MobKind kind;
-        float phase, stride;
+        float phase, stride, idlePhase;
         bool visible = true;
 
         public void Init(MobKind mobKind)
@@ -32,7 +35,7 @@ namespace VoxelWilds
                 model = Instantiate(prefab, transform, false).transform;
                 model.localPosition = Vector3.zero;
                 model.localRotation = Quaternion.identity;
-                foreach (var collider in model.GetComponentsInChildren<Collider>()) Destroy(collider);
+                foreach (var collider in model.GetComponentsInChildren<Collider>()) { collider.enabled = false; Destroy(collider); }
                 Bounds bounds = new Bounds();
                 bool found = false;
                 foreach (var renderer in model.GetComponentsInChildren<Renderer>())
@@ -65,7 +68,18 @@ namespace VoxelWilds
                     name.StartsWith("wing_") && !name.Contains("membrane") && !name.Contains("upper") && !name.Contains("outer") ||
                     name.StartsWith("wingtip_") || name.StartsWith("tail_") && !name.Contains("mesh") && !name.Contains("spine") ||
                     name == "head_joint" || name == "jaw" || name == "crystal_spin" || name.StartsWith("rod_"))
-                    joints.Add(new Joint { Transform = part, Rest = part.localRotation, Name = name, Side = name.Contains("_-1") ? -1 : 1 });
+                {
+                    string[] pieces = name.Split('_');
+                    int index = 0;
+                    if (pieces.Length > 1) int.TryParse(pieces[1], out index);
+                    joints.Add(new Joint {
+                        Transform = part, Rest = part.localRotation, Name = name, Side = index < 0 ? -1 : 1, Index = index,
+                        GaitSign = MobRules.GaitSign(kind, name),
+                        Right = part.parent.InverseTransformDirection(transform.right).normalized,
+                        Up = part.parent.InverseTransformDirection(transform.up).normalized,
+                        Forward = part.parent.InverseTransformDirection(transform.forward).normalized
+                    });
+                }
             }
             foreach (var renderer in model.GetComponentsInChildren<Renderer>())
             {
@@ -76,40 +90,43 @@ namespace VoxelWilds
                 colors.Add(color);
             }
             phase = Random.value * Mathf.PI * 2;
+            idlePhase = phase;
         }
 
         public void Animate(float dt, float speed, float attack, float hurt, float fuse, bool angry)
         {
             if (model == null) return;
             stride = Mathf.Lerp(stride, Mathf.Clamp01(speed / Mathf.Max(.1f, MobRules.Definition(kind).Speed)), 1 - Mathf.Exp(-dt * 8));
-            phase += dt * (kind == MobKind.EndDragon ? 4 : 4 + speed * 2.3f);
+            idlePhase += dt * (kind == MobKind.EndDragon ? 4 : 1.8f);
+            phase += Mathf.Max(0, speed) * dt * (kind == MobKind.Chicken ? 7 : 4.2f);
             float attackArc = Mathf.Sin(Mathf.Clamp01(attack) * Mathf.PI);
-            model.localPosition = restPosition + Vector3.up * (kind == MobKind.EndCrystal ? .08f * Mathf.Sin(phase) : kind == MobKind.Blaze ? .09f * Mathf.Sin(phase) : Mathf.Abs(Mathf.Sin(phase)) * stride * .035f);
+            model.localPosition = restPosition + Vector3.up * (kind == MobKind.EndCrystal ? .08f * Mathf.Sin(idlePhase) : kind == MobKind.Blaze ? .09f * Mathf.Sin(idlePhase) : Mathf.Abs(Mathf.Sin(phase)) * stride * .012f);
             foreach (var joint in joints)
             {
                 float angle = 0;
-                Vector3 axis = transform.right;
+                Vector3 axis = joint.Right;
                 if (joint.Name.StartsWith("leg_"))
                 {
-                    int alternate = joint.Name.EndsWith("_-1") ? -1 : 1;
-                    angle = Mathf.Sin(phase + (joint.Side * alternate > 0 ? 0 : Mathf.PI)) * 28 * stride;
-                    if (kind == MobKind.Spider) { axis = transform.up; angle *= .65f; }
+                    angle = Mathf.Sin(phase) * joint.GaitSign * 32 * stride;
+                    if (kind == MobKind.Spider) { axis = joint.Up; angle *= .65f; }
                 }
                 else if (joint.Name.StartsWith("arm_"))
                 {
                     angle = Mathf.Sin(phase + (joint.Side < 0 ? 0 : Mathf.PI)) * 23 * stride;
-                    if (kind == MobKind.Zombie && angry) angle -= 65;
-                    if (kind != MobKind.Villager) angle -= attackArc * (joint.Side > 0 ? 105 : 35);
+                    if (kind == MobKind.Zombie) angle = -78 + Mathf.Sin(idlePhase) * 2 + angle * .12f;
+                    if (kind == MobKind.Skeleton && angry) angle = -78 + angle * .08f;
+                    if (kind == MobKind.Villager) angle = 0;
+                    else angle -= attackArc * (joint.Side > 0 ? 70 : 20);
                 }
-                else if (joint.Name.StartsWith("wingtip_")) { axis = transform.forward; angle = Mathf.Sin(phase - .7f) * 24 * joint.Side; }
-                else if (joint.Name.StartsWith("wing_")) { axis = transform.forward; angle = Mathf.Sin(phase) * 36 * joint.Side; }
-                else if (joint.Name.StartsWith("tail_")) { axis = transform.up; angle = Mathf.Sin(phase * .5f - joint.Transform.GetSiblingIndex() * .6f) * 8; }
-                else if (joint.Name == "head_joint") { axis = transform.up; angle = Mathf.Sin(phase * .24f) * (angry ? 2 : 7); }
+                else if (joint.Name.StartsWith("wingtip_")) { axis = joint.Forward; angle = Mathf.Sin(idlePhase - .7f) * 24 * joint.Side; }
+                else if (joint.Name.StartsWith("wing_")) { axis = joint.Forward; angle = Mathf.Sin(idlePhase) * 36 * joint.Side; }
+                else if (joint.Name.StartsWith("tail_")) { axis = joint.Up; angle = Mathf.Sin(idlePhase * .5f - joint.Index * .6f) * 7; }
+                else if (joint.Name == "head_joint") { axis = joint.Up; angle = Mathf.Sin(idlePhase * .24f) * (angry ? 2 : 5); }
                 else if (joint.Name == "jaw") angle = 5 + attackArc * 25;
-                else if (joint.Name == "crystal_spin") { axis = transform.up; angle = phase * 28; }
-                else if (joint.Name.StartsWith("rod_")) { axis = transform.up; angle = phase * 35; }
-                Vector3 localAxis = joint.Transform.parent != null ? joint.Transform.parent.InverseTransformDirection(axis).normalized : axis;
-                joint.Transform.localRotation = Quaternion.AngleAxis(angle, localAxis) * joint.Rest;
+                else if (joint.Name == "crystal_spin") { axis = joint.Up; angle = idlePhase * 28; }
+                else if (joint.Name.StartsWith("rod_")) { axis = joint.Up; angle = idlePhase * 35; }
+                Quaternion pose = Quaternion.AngleAxis(angle, axis) * joint.Rest;
+                joint.Transform.localRotation = Quaternion.Slerp(joint.Transform.localRotation, pose, 1 - Mathf.Exp(-dt * 18));
             }
             for (int i = 0; i < renderers.Count; i++)
             {

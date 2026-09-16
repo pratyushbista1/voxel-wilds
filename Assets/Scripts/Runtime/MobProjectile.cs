@@ -73,8 +73,14 @@ namespace VoxelWilds
             for (int i = 1; i <= steps; i++)
             {
                 float fraction = i / (float)steps;
-                var block = game.World.GetBlock(MobDirector.CellAt(Vector3.Lerp(old, next, fraction)));
-                if (Blocks.IsSolid(block)) { solidDistance = distance * fraction; break; }
+                var cell = MobDirector.CellAt(Vector3.Lerp(old, next, fraction));
+                Voxel voxel = game.World.Get(cell);Block block=voxel.Id;
+                if (BlockShape.BlocksRay(cell, voxel, ray, distance))
+                {
+                    solidDistance = distance * fraction;
+                    if (block == Block.Door && BlockShape.Bounds(cell, voxel).IntersectRay(ray, out float doorDistance)) solidDistance = doorDistance;
+                    break;
+                }
                 if (block == Block.Water) velocity *= Mathf.Pow(.6f, dt / steps);
             }
             if (hitMob && mobDistance <= solidDistance && (!hitPlayer || mobDistance <= playerDistance))

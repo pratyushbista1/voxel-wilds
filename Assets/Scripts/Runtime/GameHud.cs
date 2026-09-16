@@ -18,7 +18,8 @@ namespace VoxelWilds
         private ItemStack cursor;
         private ItemStack[] grid=new ItemStack[4],chest;
         private Furnace furnace;
-        private Vector2 worldsScroll,catalogScroll,recipesScroll;
+        private Vector2 worldsScroll,catalogScroll,recipesScroll,settingsScroll;
+        private int settingsTab;
         private readonly List<WorldEntry> worlds=new List<WorldEntry>();
         private readonly Dictionary<int,Texture2D> icons=new Dictionary<int,Texture2D>();
         private GUIStyle text,title,heading,small,button,field,number;
@@ -146,7 +147,7 @@ namespace VoxelWilds
             }
             if(Button(new Rect(left,621,155,43),"Settings")){previousScreen="title";screen="settings";}
             if(Button(new Rect(left+170,621,130,43),"Quit"))Application.Quit();
-            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.0",small,TextAnchor.MiddleRight);
+            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.2",small,TextAnchor.MiddleRight);
         }
         private void Hud()
         {
@@ -335,31 +336,72 @@ namespace VoxelWilds
         }
         private void SettingsScreen()
         {
-            if(game.World==null)Fill(new Rect(0,0,width,height),Ink);else Shade();float x=width/2-340;
-            PanelBox(new Rect(x,54,680,611),"Settings");var s=game.Settings;
-            Slider(x+30,120,"View distance",ref s.ViewDistance,2,8," chunks");
-            Slider(x+30,175,"Field of view",ref s.FieldOfView,55,110);
-            Slider(x+30,230,"Mouse sensitivity",ref s.Sensitivity,.2f,6);
-            Slider(x+30,285,"Brightness",ref s.Brightness,.35f,1.8f);
-            Slider(x+30,340,"Mob distance",ref s.EntityDistance,24,120);
-            string fpsText=s.Fps==0?"Unlimited":s.Fps.ToString();Label(new Rect(x+30,395,250,26),"Frame limit: "+fpsText,text);
-            int[] limits={0,30,60,90,120,144,165,240,360};if(Button(new Rect(x+352,393,297,35),fpsText)){int index=Array.IndexOf(limits,s.Fps);s.Fps=limits[(index+1)%limits.Length];game.ApplySettings();}
-            if(Button(new Rect(x+30,445,190,39),"Shadows: "+new[]{"Off","Hard","Soft"}[Mathf.Clamp(s.Shadows,0,2)])){s.Shadows=(s.Shadows+1)%3;game.ApplySettings();}
-            if(Button(new Rect(x+242,445,190,39),"Clouds: "+(s.Clouds?"On":"Off"))){s.Clouds=!s.Clouds;game.ApplySettings();}
-            if(Button(new Rect(x+457,445,190,39),"Fog: "+(s.Fog?"On":"Off"))){s.Fog=!s.Fog;game.ApplySettings();}
-            if(Button(new Rect(x+30,497,190,39),"View bob: "+(s.Bobbing?"On":"Off"))){s.Bobbing=!s.Bobbing;game.ApplySettings();}
-            if(Button(new Rect(x+242,497,190,39),"Fullscreen: "+(s.Fullscreen?"On":"Off"))){s.Fullscreen=!s.Fullscreen;game.ApplySettings();}
-            if(game.World!=null&&Button(new Rect(x+457,497,190,39),new[]{"Peaceful","Easy","Normal","Hard"}[game.Difficulty]))game.SetDifficulty((game.Difficulty+1)%4);
-            if(Button(new Rect(x+30,581,617,46),"Done",true)){game.ApplySettings();screen=previousScreen=="title"?"title":"game";game.LockCursor();}
-            Label(new Rect(x+30,545,617,27),"Unlimited FPS can increase GPU power use and heat.",small);
+            if(game.World==null)Fill(new Rect(0,0,width,height),Ink);else Shade();float x=width/2-440;
+            PanelBox(new Rect(x,30,880,660),"Settings");var s=game.Settings;
+            if(Button(new Rect(x+24,91,404,38),"Graphics",settingsTab==0)){settingsTab=0;settingsScroll=Vector2.zero;ClearTextFocus();}
+            if(Button(new Rect(x+448,91,404,38),"Gameplay",settingsTab==1)){settingsTab=1;settingsScroll=Vector2.zero;ClearTextFocus();}
+            Label(new Rect(x+24,140,828,24),settingsTab==0?"Display and quality controls. Scroll for more options.":"Camera, sound and game preferences.",small);
+            settingsScroll=GUI.BeginScrollView(new Rect(x+24,173,832,425),settingsScroll,new Rect(0,0,808,settingsTab==0?782:286));
+            if(settingsTab==0)
+            {
+                if(SettingsChoice(0,0,"Quality preset",GraphicsOptions.PresetNames[s.Preset])){GraphicsOptions.SetPreset(s,s.Preset>=3?0:s.Preset+1);game.ApplySettings();}
+                SettingsSlider(422,0,"View distance",ref s.ViewDistance,2,8," chunks",true);
+                if(SettingsChoice(0,72,"Vertical sync",s.VSync?"On: match display":"Off")){s.VSync=!s.VSync;game.ApplySettings();}
+                bool enabled=GUI.enabled;GUI.enabled=!s.VSync;
+                if(SettingsChoice(422,72,"Frame limit",s.VSync?"Controlled by VSync":s.Fps==0?"Unlimited":s.Fps+" FPS"))
+                {int[] limits={0,30,60,90,120,144,165,240,360};s.Fps=limits[(Array.IndexOf(limits,s.Fps)+1)%limits.Length];game.ApplySettings();}
+                GUI.enabled=enabled;
+                if(SettingsChoice(0,144,"Anti-aliasing (MSAA)",s.AntiAliasing==0?"Off":s.AntiAliasing+"x"))
+                {int[] levels={0,2,4,8};s.AntiAliasing=levels[(Array.IndexOf(levels,s.AntiAliasing)+1)%levels.Length];SettingsChanged(true);}
+                SettingsSlider(422,144,"Brightness",ref s.Brightness,.35f,1.8f,false);
+                if(SettingsChoice(0,216,"Shadows",new[]{"Off","Hard","Soft"}[s.Shadows])){s.Shadows=(s.Shadows+1)%3;SettingsChanged(true);}
+                enabled=GUI.enabled;GUI.enabled=s.Shadows>0;
+                if(SettingsChoice(422,216,"Shadow resolution",new[]{"Low","Medium","High","Very high"}[s.ShadowResolution])){s.ShadowResolution=(s.ShadowResolution+1)%4;SettingsChanged(true);}
+                SettingsSlider(0,288,"Shadow distance",ref s.ShadowDistance,24,128,true,"0"," blocks");
+                GUI.enabled=enabled;
+                if(SettingsChoice(422,288,"Texture filtering",s.TextureFiltering==0?"Crisp pixels":"Smooth")){s.TextureFiltering=1-s.TextureFiltering;SettingsChanged(true);}
+                if(SettingsChoice(0,360,"Anisotropic filtering",s.Anisotropy==0?"Off":s.Anisotropy+"x"))
+                {int[] levels={0,2,4,8};s.Anisotropy=levels[(Array.IndexOf(levels,s.Anisotropy)+1)%levels.Length];SettingsChanged(true);}
+                SettingsSlider(422,360,"Block corner shading",ref s.AmbientOcclusion,0,1,true,"0%");
+                if(SettingsChoice(0,432,"Clouds",s.Clouds?"On":"Off")){s.Clouds=!s.Clouds;SettingsChanged(true);}
+                if(SettingsChoice(422,432,"Distance fog",s.Fog?"On":"Off")){s.Fog=!s.Fog;SettingsChanged(true);}
+                if(SettingsChoice(0,504,"Animated water",s.AnimatedWater?"On":"Off")){s.AnimatedWater=!s.AnimatedWater;SettingsChanged(true);}
+                if(SettingsChoice(422,504,"Display mode",s.Fullscreen?"Fullscreen":"Windowed")){s.Fullscreen=!s.Fullscreen;game.ApplySettings();}
+                SettingsSlider(0,576,"Mob render distance",ref s.EntityDistance,24,120,true,"0"," blocks");
+                Label(new Rect(422,578,385,48),"Higher quality uses more GPU power. Texture filtering keeps block art pixelated by default.",small);
+                if(SettingsChoice(0,648,"Cinematic lighting",s.Cinematic?"On":"Off")){s.Cinematic=!s.Cinematic;SettingsChanged(true);}
+                enabled=GUI.enabled;GUI.enabled=s.Cinematic;
+                SettingsSlider(422,648,"Bloom strength",ref s.Bloom,0,2,true);
+                SettingsSlider(0,720,"Exposure",ref s.Exposure,-2,2,false,"+0.0;-0.0;0.0"," EV");
+                GUI.enabled=enabled;
+                Label(new Rect(422,721,385,50),"Cinematic tonemapping adds softer highlights. Bloom gives bright lights a subtle glow.",small);
+            }
+            else
+            {
+                SettingsSlider(0,0,"Field of view",ref s.FieldOfView,55,110,false,"0");
+                SettingsSlider(422,0,"Mouse sensitivity",ref s.Sensitivity,.2f,6,false);
+                if(SettingsChoice(0,72,"View bobbing",s.Bobbing?"On":"Off")){s.Bobbing=!s.Bobbing;game.ApplySettings();}
+                SettingsSlider(422,72,"Volume",ref s.Volume,0,1,false,"0%");
+                if(game.World!=null&&SettingsChoice(0,144,"Difficulty",new[]{"Peaceful","Easy","Normal","Hard"}[game.Difficulty]))game.SetDifficulty((game.Difficulty+1)%4);
+                if(game.World==null)Label(new Rect(0,154,385,55),"Difficulty can be changed while a world is open.",small);
+                Label(new Rect(422,155,385,88),"WASD: move   Space: jump\nE: inventory   Esc: pause\nLeft mouse: mine or attack\nRight mouse: use or place",small);
+            }
+            GUI.EndScrollView();
+            Label(new Rect(x+24,606,828,24),settingsTab==0?(s.VSync?"VSync follows your display refresh rate; the stored FPS limit is ignored.":"Unlimited removes the game's FPS cap; actual FPS depends on your hardware."):"Changes are saved automatically. Quality presets do not change these preferences.",small);
+            if(Button(new Rect(x+24,638,828,35),"Done",true)){game.ApplySettings();screen=previousScreen=="title"?"title":"game";game.LockCursor();}
         }
-        private void Slider(float x,float y,string label,ref float value,float min,float max)
+        private bool SettingsChoice(float x,float y,string label,string value)
         {
-            Label(new Rect(x,y,300,26),label+": "+value.ToString("0.0"),text);float next=GUI.HorizontalSlider(new Rect(x+322,y+8,297,23),value,min,max);if(Mathf.Abs(next-value)>.001f){value=next;game.ApplySettings();}
+            Label(new Rect(x,y,384,25),label,text);return Button(new Rect(x,y+27,384,32),value);
         }
-        private void Slider(float x,float y,string label,ref int value,int min,int max,string suffix)
+        private void SettingsChanged(bool quality){if(quality)game.Settings.Preset=4;game.ApplySettings();}
+        private void SettingsSlider(float x,float y,string label,ref float value,float min,float max,bool quality,string format="0.0",string suffix="")
         {
-            Label(new Rect(x,y,300,26),label+": "+value+suffix,text);int next=Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(x+322,y+8,297,23),value,min,max));if(next!=value){value=next;game.ApplySettings();}
+            Label(new Rect(x,y,384,25),label+": "+value.ToString(format)+suffix,text);float next=GUI.HorizontalSlider(new Rect(x,y+38,384,23),value,min,max);if(Mathf.Abs(next-value)>.001f){value=next;SettingsChanged(quality);}
+        }
+        private void SettingsSlider(float x,float y,string label,ref int value,int min,int max,string suffix,bool quality)
+        {
+            Label(new Rect(x,y,384,25),label+": "+value+suffix,text);int next=Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(x,y+38,384,23),value,min,max));if(next!=value){value=next;SettingsChanged(quality);}
         }
         private void DrawStack(Rect rect,ItemStack stack)
         {

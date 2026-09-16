@@ -60,6 +60,15 @@ namespace VoxelWilds.Core
         public static float HealDragon(float health, float delta, bool crystalNearby)
             => Math.Min(200, health + (crystalNearby ? Math.Max(0, delta) : 0));
         public static int SpawnDelay(Random random) => random.Next(200, 801);
+        public static int GaitSign(MobKind kind, string jointName)
+        {
+            string[] parts = (jointName ?? "").Split('_');
+            int side = 1, row = 0;
+            if (parts.Length > 1 && int.TryParse(parts[1], out int parsedSide)) side = parsedSide < 0 ? -1 : 1;
+            if (parts.Length > 2) int.TryParse(parts[2], out row);
+            if (kind == MobKind.Spider) return side * ((row & 1) == 0 ? 1 : -1);
+            return side * (row < 0 ? -1 : 1);
+        }
         public static string ModelName(MobKind kind)
         {
             switch (kind)

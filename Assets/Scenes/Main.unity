@@ -166,7 +166,7 @@ MonoBehaviour:
   Settings:
     ViewDistance: 4
     Fps: 0
-    Shadows: 1
+    Shadows: 2
     FieldOfView: 78
     Sensitivity: 2
     Brightness: 1
@@ -176,6 +176,18 @@ MonoBehaviour:
     Fog: 1
     Clouds: 1
     Fullscreen: 0
+    Preset: 4
+    AntiAliasing: 4
+    ShadowResolution: 2
+    TextureFiltering: 0
+    Anisotropy: 4
+    ShadowDistance: 96
+    AmbientOcclusion: 0.75
+    Bloom: 0.18
+    Exposure: 0
+    VSync: 0
+    AnimatedWater: 1
+    Cinematic: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

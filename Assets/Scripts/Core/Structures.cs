@@ -96,6 +96,7 @@ namespace VoxelWilds.Core
             p.Box(x - 3, y + 6, z - 2, x + 3, y + 6, z + 2, Block.Planks);
             p.Box(x - 3, y + 7, z, x + 3, y + 7, z, Block.Planks);
             p.Box(x, y + 1, z + 2, x, y + 2, z + 3, Block.Air);
+            p.PutDoor(x, y + 1, z + 3, 2);
             p.Put(x - 3, y + 2, z, Block.Glass); p.Put(x + 3, y + 2, z, Block.Glass);
             p.Put(x, y + 2, z - 3, Block.Glass);
             p.Put(x - 2, y + 1, z - 2, Block.Bed); p.Put(x - 2, y + 1, z - 1, Block.BedHead);
@@ -216,6 +217,12 @@ namespace VoxelWilds.Core
             { minX = cx * 16; minZ = cz * 16; this.data = data; this.markers = markers; }
             public bool Intersects(int x1, int z1, int x2, int z2) => x2 >= minX && x1 < minX + 16 && z2 >= minZ && z1 < minZ + 16;
             public void Put(int x, int y, int z, Block id) => Terrain.PutClipped(data, minX, minZ, x, y, z, id);
+            public void PutDoor(int x, int y, int z, int facing)
+            {
+                if (x < minX || x >= minX + 16 || z < minZ || z >= minZ + 16 || y < 1 || y >= World.Height - 1) return;
+                data[World.Index(x - minX, y, z - minZ)] = new Voxel(Block.Door, DoorRules.State(facing));
+                data[World.Index(x - minX, y + 1, z - minZ)] = new Voxel(Block.Door, DoorRules.State(facing, false, true));
+            }
             public void Box(int x1, int y1, int z1, int x2, int y2, int z2, Block id)
             {
                 for (int z = Math.Max(z1, minZ); z <= Math.Min(z2, minZ + 15); z++)

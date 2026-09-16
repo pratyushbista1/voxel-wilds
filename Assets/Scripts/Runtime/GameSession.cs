@@ -7,13 +7,6 @@ using VoxelWilds.Core;
 
 namespace VoxelWilds
 {
-    [Serializable]
-    public sealed class GameSettings
-    {
-        public int ViewDistance=4, Fps=0, Shadows=1;
-        public float FieldOfView=78, Sensitivity=2, Brightness=1, Volume=.7f, EntityDistance=64;
-        public bool Bobbing=true, Fog=true, Clouds=true, Fullscreen=false;
-    }
     [Serializable] public sealed class EditSave { public int X,Y,Z,Id;public byte Level; }
     [Serializable] public sealed class ContainerSave { public int X,Y,Z;public ItemStack[] Slots;public Furnace Furnace; }
     [Serializable] public sealed class DropSave { public float X,Y,Z,Life;public ItemStack Stack; }
@@ -57,6 +50,7 @@ namespace VoxelWilds
         private readonly Dictionary<Cell,ContainerSave> containers=new Dictionary<Cell,ContainerSave>();
         private readonly List<DroppedItem> drops=new List<DroppedItem>();
         private GameObject clouds;
+        private Material skyMaterial,cloudMaterial;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap(){if(FindFirstObjectByType<GameSession>()==null)new GameObject("Voxel Wilds").AddComponent<GameSession>();}
@@ -66,16 +60,21 @@ namespace VoxelWilds
             SaveDirectory=Argument("-voxel-saves")??Path.GetFullPath(Path.Combine(Application.dataPath,"..","saves","unity"));
             try{Directory.CreateDirectory(SaveDirectory);}catch(Exception){SaveDirectory=Path.Combine(Application.persistentDataPath,"saves");Directory.CreateDirectory(SaveDirectory);}
             string settingsPath=Path.Combine(SaveDirectory,"settings.json");
-            if(File.Exists(settingsPath))try{Settings=JsonUtility.FromJson<GameSettings>(File.ReadAllText(settingsPath))??new GameSettings();}catch(Exception){Settings=new GameSettings();}
+            if(File.Exists(settingsPath))try{JsonUtility.FromJsonOverwrite(File.ReadAllText(settingsPath),Settings);}catch(Exception){Settings=new GameSettings();}
             Renderer=new GameObject("Voxel chunks").AddComponent<WorldRenderer>();
             Player=new GameObject("Player").AddComponent<PlayerController>();Player.Init(this);
             Player.gameObject.SetActive(false);
             Mobs=new GameObject("Mobs").AddComponent<MobDirector>();
             Hud=gameObject.AddComponent<GameHud>();Hud.Init(this);
-            sun=new GameObject("Sun").AddComponent<Light>();sun.type=LightType.Directional;sun.color=new Color(1,.93f,.79f);
-            RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Flat;ApplySettings();
+            sun=new GameObject("Sun").AddComponent<Light>();sun.type=LightType.Directional;sun.color=new Color(1,.96f,.86f);
+            skyMaterial=new Material(Shader.Find("VoxelWilds/Sky"));RenderSettings.skybox=skyMaterial;
+            cloudMaterial=new Material(Shader.Find("Standard"));cloudMaterial.color=new Color(.93f,.95f,.98f);cloudMaterial.SetFloat("_Glossiness",0);
+            Player.Eye.clearFlags=CameraClearFlags.Skybox;
+            RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Trilight;ApplySettings();
             Cursor.lockState=CursorLockMode.None;Cursor.visible=true;
             if(Argument("-voxel-smoke")!=null || Environment.GetCommandLineArgs().Contains("-voxel-smoke"))gameObject.AddComponent<SimulationSmoke>();
+            if(Environment.GetCommandLineArgs().Contains("-voxel-visual-check"))gameObject.AddComponent<GraphicsSmoke>();
+            if(Environment.GetCommandLineArgs().Contains("-voxel-interaction-check"))gameObject.AddComponent<InteractionSmoke>();
         }
         public static string Argument(string key)
         {
@@ -83,12 +82,8 @@ namespace VoxelWilds
         }
         public void ApplySettings()
         {
-            Settings.ViewDistance=Mathf.Clamp(Settings.ViewDistance,2,8);Settings.FieldOfView=Mathf.Clamp(Settings.FieldOfView,55,110);Settings.Sensitivity=Mathf.Clamp(Settings.Sensitivity,.2f,6);
-            Settings.Fps=Mathf.Clamp(Settings.Fps,0,360);QualitySettings.vSyncCount=0;Application.targetFrameRate=Settings.Fps==0?-1:Settings.Fps;
-            QualitySettings.shadows=Settings.Shadows==0?ShadowQuality.Disable:Settings.Shadows==1?ShadowQuality.HardOnly:ShadowQuality.All;
-            QualitySettings.shadowDistance=Settings.Shadows==0?0:64;QualitySettings.antiAliasing=0;AudioListener.volume=Mathf.Clamp01(Settings.Volume);
-            if(Player!=null){Player.Eye.fieldOfView=Settings.FieldOfView;Player.Eye.farClipPlane=Settings.ViewDistance*16+40;}
-            if(sun!=null)sun.shadows=Settings.Shadows==0?LightShadows.None:LightShadows.Soft;
+            GraphicsOptions.Apply(Settings,Player!=null?Player.Eye:null,sun,Renderer);
+            if(World!=null)UpdateSky();
             if(!Application.isEditor && Screen.fullScreen!=Settings.Fullscreen)Screen.fullScreen=Settings.Fullscreen;
             if(SaveDirectory!=null)try{File.WriteAllText(Path.Combine(SaveDirectory,"settings.json"),JsonUtility.ToJson(Settings,true));}catch(Exception error){Notify("Settings could not be saved: "+error.Message);}
         }
@@ -123,7 +118,7 @@ namespace VoxelWilds
             foreach(var dim in data.Dimensions)
             {
                 if(dim.Id<0||dim.Id>2||dim.Edits==null||dim.Edits.Count>1000000||dim.Containers==null||dim.Drops==null)throw new FormatException("Invalid dimension.");
-                foreach(var entry in dim.Edits)if(entry.Y<0||entry.Y>=World.Height||entry.Id<0||entry.Id>(int)Block.EndFrame||Mathf.Abs((float)entry.X)>1000000||Mathf.Abs((float)entry.Z)>1000000||entry.Level>8)throw new FormatException("Invalid block edit.");
+                foreach(var entry in dim.Edits)if(entry.Y<0||entry.Y>=World.Height||entry.Id<0||entry.Id>(int)Block.EndFrame||Mathf.Abs((float)entry.X)>1000000||Mathf.Abs((float)entry.Z)>1000000||entry.Level>(entry.Id==(int)Block.Door?15:8))throw new FormatException("Invalid block edit.");
                 foreach(var box in dim.Containers){if(box.Slots!=null){if(box.Slots.Length!=27)throw new FormatException("Invalid chest.");foreach(var stack in box.Slots)ValidateStack(stack);}if(box.Furnace!=null){ValidateStack(box.Furnace.Input);ValidateStack(box.Furnace.Fuel);ValidateStack(box.Furnace.Output);}}
                 foreach(var drop in dim.Drops)ValidateStack(drop.Stack);
             }
@@ -195,17 +190,41 @@ namespace VoxelWilds
         private void UpdateSky()
         {
             bool overworld=World.Dimension==Dimension.Overworld;
-            float day=overworld?Mathf.Clamp01(Mathf.Sin((save.Day-.25f)*Mathf.PI*2)*2+.35f):World.Dimension==Dimension.Nether?.45f:.3f;
-            Color sky=overworld?Color.Lerp(new Color(.025f,.035f,.085f),new Color(.48f,.72f,.91f),day):World.Dimension==Dimension.Nether?new Color(.20f,.055f,.04f):new Color(.045f,.018f,.09f);
-            Player.Eye.backgroundColor=sky;RenderSettings.fog=Settings.Fog;RenderSettings.fogMode=FogMode.Linear;RenderSettings.fogColor=sky;RenderSettings.fogStartDistance=Settings.ViewDistance*8;RenderSettings.fogEndDistance=Settings.ViewDistance*16;
-            float ambient=(.15f+day*.5f)*Settings.Brightness;RenderSettings.ambientLight=new Color(ambient,ambient,ambient);
-            sun.intensity=overworld?day*.85f:.22f;sun.transform.rotation=Quaternion.Euler(save.Day*360-90,30,0);
+            float sunHeight=Mathf.Sin((save.Day-.25f)*Mathf.PI*2),day=Mathf.SmoothStep(0,1,Mathf.InverseLerp(-.16f,.3f,sunHeight));
+            float twilight=(1-Mathf.Clamp01(Mathf.Abs(sunHeight)*3))*day;
+            Color top=Color.Lerp(new Color(.018f,.033f,.075f),new Color(.25f,.52f,.8f),day);
+            Color horizon=Color.Lerp(new Color(.065f,.085f,.15f),new Color(.73f,.83f,.88f),day);
+            horizon=Color.Lerp(horizon,new Color(.9f,.49f,.26f),twilight*.78f);
+            Color ambientSky=Color.Lerp(new Color(.18f,.23f,.34f),new Color(.62f,.70f,.80f),day)*Settings.Brightness;
+            Color ambientGround=Color.Lerp(new Color(.09f,.11f,.16f),new Color(.34f,.32f,.28f),day)*Settings.Brightness;
+            sun.transform.rotation=Quaternion.Euler(save.Day*360-90,30,0);Vector3 sunDirection=-sun.transform.forward;
+            sun.color=Color.Lerp(new Color(.49f,.63f,1),Color.Lerp(new Color(1,.96f,.87f),new Color(1,.64f,.36f),twilight),day);
+            sun.intensity=Mathf.Lerp(.18f,1.1f,day)*Settings.Brightness;
+            if(sunHeight<-.1f)sun.transform.rotation=Quaternion.LookRotation(sunDirection);
+            if(!overworld)
+            {
+                bool nether=World.Dimension==Dimension.Nether;
+                top=nether?new Color(.105f,.018f,.012f):new Color(.012f,.006f,.026f);
+                horizon=nether?new Color(.3f,.075f,.025f):new Color(.055f,.025f,.1f);
+                ambientSky=(nether?new Color(.42f,.25f,.20f):new Color(.38f,.30f,.49f))*Settings.Brightness;
+                ambientGround=ambientSky*.6f;sun.intensity=.3f*Settings.Brightness;sun.color=nether?new Color(1,.48f,.22f):new Color(.64f,.49f,.94f);sun.transform.rotation=Quaternion.Euler(55,30,0);
+            }
+            if(skyMaterial)
+            {
+                skyMaterial.SetColor("_SkyTop",top);skyMaterial.SetColor("_SkyHorizon",horizon);skyMaterial.SetColor("_SkyGround",Color.Lerp(horizon,new Color(.17f,.23f,.25f),.65f));
+                skyMaterial.SetVector("_SunDirection",sunDirection);skyMaterial.SetColor("_SunColor",Color.Lerp(new Color(1,.96f,.77f),new Color(1,.48f,.17f),twilight)*2.5f);
+                skyMaterial.SetFloat("_Night",1-day);skyMaterial.SetFloat("_Dimension",overworld?0:1);
+            }
+            Player.Eye.backgroundColor=horizon;RenderSettings.fog=Settings.Fog;RenderSettings.fogMode=FogMode.Linear;RenderSettings.fogColor=horizon;
+            RenderSettings.fogStartDistance=Settings.ViewDistance*9;RenderSettings.fogEndDistance=Settings.ViewDistance*16;
+            RenderSettings.ambientSkyColor=ambientSky;RenderSettings.ambientEquatorColor=Color.Lerp(ambientSky,ambientGround,.4f);RenderSettings.ambientGroundColor=ambientGround;
+            Shader.SetGlobalColor("_VoxelAmbientSky",ambientSky.linear);Shader.SetGlobalColor("_VoxelAmbientGround",ambientGround.linear);Shader.SetGlobalColor("_VoxelSkyReflection",horizon.linear);
             if(clouds){clouds.SetActive(Settings.Clouds&&overworld);clouds.transform.position=new Vector3(Player.transform.position.x+Mathf.Sin(Time.time*.003f)*16,79,Player.transform.position.z);}
         }
         private void BuildClouds()
         {
-            if(clouds)Destroy(clouds);clouds=new GameObject("Clouds");var material=new Material(Shader.Find("Unlit/Color")){color=new Color(.88f,.92f,.96f)};
-            for(int i=0;i<16;i++){var box=GameObject.CreatePrimitive(PrimitiveType.Cube);Destroy(box.GetComponent<Collider>());box.transform.SetParent(clouds.transform,false);box.transform.localPosition=new Vector3((i%4)*43-65,0,(i/4)*39-60);box.transform.localScale=new Vector3(15+i%3*4,2,8+i%5);box.GetComponent<Renderer>().sharedMaterial=material;}
+            if(clouds)Destroy(clouds);clouds=new GameObject("Clouds");
+            for(int i=0;i<24;i++){var box=GameObject.CreatePrimitive(PrimitiveType.Cube);box.GetComponent<Collider>().enabled=false;Destroy(box.GetComponent<Collider>());box.transform.SetParent(clouds.transform,false);box.transform.localPosition=new Vector3((i%6)*35-87,Mathf.Sin(i*2)*1.5f,(i/6)*44-66);box.transform.localScale=new Vector3(13+i%3*5,1.3f+i%2,7+i%5);var renderer=box.GetComponent<Renderer>();renderer.sharedMaterial=cloudMaterial;renderer.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;}
         }
         public void SetPaused(bool paused){if(Player.Dead)return;Paused=paused;if(paused){Hud.Close();SaveWorld();}LockCursor();}
         public void LockCursor(){bool locked=World!=null&&!Paused&&!Sleeping&&!Player.Dead&&!Hud.IsOpen;Cursor.lockState=locked?CursorLockMode.Locked:CursorLockMode.None;Cursor.visible=!locked;}
@@ -245,6 +264,7 @@ namespace VoxelWilds
             bool sneak=Input.GetKey(KeyCode.LeftShift);
             if(hasTarget&&!sneak)
             {
+                if(block==Block.Door){DoorRules.Toggle(World,target);return true;}
                 if(block==Block.Workbench){Hud.OpenCrafting();return true;}
                 if(block==Block.Chest){Hud.OpenChest(Container(target).Slots);return true;}
                 if(block==Block.Furnace){Hud.OpenFurnace(Container(target).Furnace);return true;}
@@ -282,7 +302,14 @@ namespace VoxelWilds
             if(adjacent.Y<=0||adjacent.Y>=World.Height-1)return false;
             if(place==Block.Crop&&World.GetBlock(adjacent.Down)!=Block.Farmland){Notify("Plant seeds on tilled soil.");return true;}
             if(Blocks.IsSolid(place)&&new Bounds(new Vector3(adjacent.X+.5f,adjacent.Y+.5f,adjacent.Z+.5f),Vector3.one).Intersects(new Bounds(Player.transform.position+Vector3.up*.9f,new Vector3(.6f,1.8f,.6f))))return false;
-            if(Blocks.IsBed(place))
+            if(place==Block.Door)
+            {
+                var doorBounds=new Bounds(new Vector3(adjacent.X+.5f,adjacent.Y+1,adjacent.Z+.5f),new Vector3(1,2,1));
+                if(doorBounds.Intersects(new Bounds(Player.transform.position+Vector3.up*.9f,new Vector3(.6f,1.8f,.6f))))return false;
+                int facing=(4-Mathf.RoundToInt(Player.Eye.transform.eulerAngles.y/90))&3;
+                if(!DoorRules.TryPlace(World,adjacent,facing)){Notify("Doors need a solid floor and two clear blocks of space.");return false;}
+            }
+            else if(Blocks.IsBed(place))
             {
                 Cell second=adjacent+new Cell(0,0,1);if(World.GetBlock(second)!=Block.Air||!World.Solid(adjacent.Down)||!World.Solid(second.Down))return false;
                 World.Set(adjacent,Block.Bed);World.Set(second,Block.BedHead);
@@ -294,6 +321,8 @@ namespace VoxelWilds
         public void BreakBlock(Cell target)
         {
             Block id=World.GetBlock(target);if(float.IsInfinity(Blocks.Hardness(id)))return;
+            Voxel supported=World.Get(target.Up);
+            if(id!=Block.Door&&supported.Id==Block.Door&&!DoorRules.IsUpper(supported))BreakBlock(target.Up);
             if(containers.TryGetValue(target,out var box))
             {
                 if(box.Slots!=null)foreach(var stack in box.Slots)if(stack!=null&&!stack.Empty)DropStack(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),stack);
@@ -301,7 +330,7 @@ namespace VoxelWilds
                 containers.Remove(target);
             }
             if(Blocks.IsBed(id)){Cell partner=id==Block.BedHead?target+new Cell(0,0,-1):target+new Cell(0,0,1);if(Blocks.IsBed(World.GetBlock(partner)))World.Set(partner,Block.Air);}
-            World.Set(target,Block.Air);
+            if(id==Block.Door)DoorRules.Remove(World,target);else World.Set(target,Block.Air);
             if(!Player.IsCreative&&Items.CanHarvest(Player.Inventory.Held?.Id??0,id))
             {
                 int drop=Blocks.Drop(id),count=id==Block.Clay?4:1;
@@ -402,7 +431,7 @@ namespace VoxelWilds
         }
         private void OnApplicationFocus(bool focused){if(!focused&&World!=null&&!Player.Dead)SetPaused(true);}
         private void OnApplicationQuit(){Hud?.Close();SaveWorld();}
-        private void OnDestroy(){fluids?.Dispose();if(Instance==this)Instance=null;}
+        private void OnDestroy(){fluids?.Dispose();if(skyMaterial)Destroy(skyMaterial);if(cloudMaterial)Destroy(cloudMaterial);if(Instance==this)Instance=null;}
     }
     public sealed class DroppedItem : MonoBehaviour
     {

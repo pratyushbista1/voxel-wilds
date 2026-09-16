@@ -313,17 +313,28 @@ namespace VoxelWilds
         public bool ClearBody(Vector3 position, float radius, float height)
         {
             if (position.y < -10 || position.y + height >= World.Height) return false;
+            var body = new Bounds(position + Vector3.up * height * .5f, new Vector3(radius * 2 - .03f, height - .05f, radius * 2 - .03f));
             for (int y = Mathf.FloorToInt(position.y + .025f); y <= Mathf.FloorToInt(position.y + height - .025f); y++)
             for (int z = Mathf.FloorToInt(position.z - radius + .015f); z <= Mathf.FloorToInt(position.z + radius - .015f); z++)
             for (int x = Mathf.FloorToInt(position.x - radius + .015f); x <= Mathf.FloorToInt(position.x + radius - .015f); x++)
-                if (game.World.Solid(new Cell(x, y, z))) return false;
+            {
+                var cell = new Cell(x, y, z);
+                Voxel voxel = game.World.Get(cell);
+                if (voxel.Id == Block.Door) { if (BlockShape.Bounds(cell, voxel).Intersects(body)) return false; }
+                else if (Blocks.IsSolid(voxel.Id)) return false;
+            }
             return true;
         }
         public bool LineClear(Vector3 start, Vector3 end)
         {
             float distance = Vector3.Distance(start, end);
             int steps = Mathf.CeilToInt(distance * 5);
-            for (int i = 1; i < steps; i++) if (game.World.Solid(CellAt(Vector3.Lerp(start, end, i / (float)steps)))) return false;
+            var ray = new Ray(start, (end - start).normalized);
+            for (int i = 1; i < steps; i++)
+            {
+                Cell cell = CellAt(Vector3.Lerp(start, end, i / (float)steps));
+                if (BlockShape.BlocksRay(cell, game.World.Get(cell), ray, distance)) return false;
+            }
             return true;
         }
         public void ShootArrow(Vector3 origin, Vector3 direction, float charge = 1)

@@ -15,7 +15,7 @@ namespace VoxelWilds.Editor
     public static class BuildGame
     {
         public const string ScenePath = "Assets/Scenes/Main.unity";
-        public const string Version = "2.0.0";
+        public const string Version = "2.0.2";
 
         [MenuItem("Voxel Wilds/Configure project")]
         public static void Configure()
@@ -52,6 +52,9 @@ namespace VoxelWilds.Editor
             IncludeShader("Sprites/Default");
             IncludeShader("VoxelWilds/Terrain");
             IncludeShader("VoxelWilds/Fluid");
+            IncludeShader("VoxelWilds/Sky");
+            IncludeShader("VoxelWilds/Cinematic");
+            IncludeShader("VoxelWilds/FirstPerson");
 
             Directory.CreateDirectory("Assets/Scenes");
             var scene = File.Exists(ScenePath) ? EditorSceneManager.OpenScene(ScenePath) : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -127,7 +130,7 @@ namespace VoxelWilds.Editor
             }
             Check(Object.FindObjectsByType<GameSession>(FindObjectsSortMode.None).Length == 1, "Main scene has one game session");
             Check(EditorBuildSettings.scenes.Length == 1 && EditorBuildSettings.scenes[0].path == ScenePath, "Main scene is included in the player");
-            foreach (string shaderName in new[] { "VoxelWilds/Terrain", "VoxelWilds/Fluid", "Standard" })
+            foreach (string shaderName in new[] { "VoxelWilds/Terrain", "VoxelWilds/Fluid", "VoxelWilds/Sky", "VoxelWilds/Cinematic", "VoxelWilds/FirstPerson", "Standard" })
             {
                 var shader = Shader.Find(shaderName);
                 Check(shader != null && !ShaderUtil.ShaderHasError(shader), shaderName + " imports without shader errors");

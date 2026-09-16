@@ -31,8 +31,30 @@ namespace VoxelWilds.Core
             Structures.Decorate(Seed, Dimension, cx, cz, data, markers);
             if (chunkEdits.TryGetValue(key, out var localEdits))
                 foreach (var entry in localEdits) data[Index(entry.Key.X - cx * ChunkSize, entry.Key.Y, entry.Key.Z - cz * ChunkSize)] = entry.Value;
+            NormalizeGeneratedDoors(key, data, false);
             chunks.Add(key, data);
             ChunkGenerated?.Invoke(cx, cz);
+        }
+        private void NormalizeGeneratedDoors(Cell key, Voxel[] data, bool notify)
+        {
+            chunkEdits.TryGetValue(key, out var localEdits);
+            for (int y = 0; y < Height; y++)
+            for (int z = 0; z < ChunkSize; z++)
+            for (int x = 0; x < ChunkSize; x++)
+            {
+                int index = Index(x, y, z);
+                Voxel door = data[index];
+                if (door.Id != Block.Door) continue;
+                Cell position = new Cell(key.X * ChunkSize + x, y, key.Z * ChunkSize + z);
+                if (localEdits != null && localEdits.ContainsKey(position)) continue;
+                int otherY = y + (DoorRules.IsUpper(door) ? -1 : 1);
+                bool supported = DoorRules.IsUpper(door) || y > 0 && DoorRules.Supports(data[Index(x, y - 1, z)].Id);
+                if (!supported || otherY < 0 || otherY >= Height || !DoorRules.Paired(door, data[Index(x, otherY, z)]))
+                {
+                    data[index] = new Voxel(Block.Air);
+                    if (notify) Changed?.Invoke(position);
+                }
+            }
         }
         public Voxel Get(Cell p)
         {
@@ -43,16 +65,27 @@ namespace VoxelWilds.Core
             return chunks[key][Index(p.X - key.X * ChunkSize, p.Y, p.Z - key.Z * ChunkSize)];
         }
         public Block GetBlock(Cell p) => Get(p).Id;
-        public bool Solid(Cell p) => Blocks.IsSolid(GetBlock(p));
+        public bool Solid(Cell p) { Voxel voxel = Get(p); return Blocks.IsSolid(voxel.Id) && !DoorRules.IsOpen(voxel); }
         public void Set(Cell p, Block id, byte level = 0)
         {
             if (p.Y < 0 || p.Y >= Height || (int)id > (int)Block.EndFrame) return;
             var value = new Voxel(id, level);
-            if (Get(p).Equals(value)) return;
+            Voxel previous = Get(p);
+            if (previous.Equals(value)) return;
             Cell key = ChunkKey(p);
             chunks[key][Index(p.X - key.X * ChunkSize, p.Y, p.Z - key.Z * ChunkSize)] = value;
             StoreEdit(p, value);
             Changed?.Invoke(p);
+            if (previous.Id == Block.Door && id != Block.Door)
+            {
+                Cell partner = DoorRules.Partner(p, previous);
+                if (DoorRules.Paired(previous, Get(partner))) Set(partner, Block.Air);
+            }
+            if (DoorRules.Supports(previous.Id) && !DoorRules.Supports(id) && IsLoaded(p.Up))
+            {
+                Voxel above = Get(p.Up);
+                if (above.Id == Block.Door && !DoorRules.IsUpper(above)) Set(p.Up, Block.Air);
+            }
         }
         private void StoreEdit(Cell p, Voxel value)
         {
@@ -64,6 +97,7 @@ namespace VoxelWilds.Core
         public void ApplyEdits(IEnumerable<KeyValuePair<Cell, Voxel>> values)
         {
             if (values == null) return;
+            var changedChunks = new HashSet<Cell>();
             foreach (var entry in values)
             {
                 Cell p = entry.Key;
@@ -73,12 +107,14 @@ namespace VoxelWilds.Core
                 Cell key = ChunkKey(p);
                 if (chunks.TryGetValue(key, out var data))
                 {
+                    changedChunks.Add(key);
                     int index = Index(p.X - key.X * ChunkSize, p.Y, p.Z - key.Z * ChunkSize);
                     if (data[index].Equals(value)) continue;
                     data[index] = value;
                     Changed?.Invoke(p);
                 }
             }
+            foreach (Cell key in changedChunks) NormalizeGeneratedDoors(key, chunks[key], true);
         }
         public int HeightAt(int x, int z)
         {

@@ -26,7 +26,7 @@ namespace VoxelWilds.Core
     {
         public Block Id;
         public byte Level;
-        public Voxel(Block id, byte level = 0) { Id = id; Level = Blocks.IsFluid(id) ? (byte)Math.Min(8, (int)level) : (byte)0; }
+        public Voxel(Block id, byte level = 0) { Id = id; Level = Blocks.IsFluid(id) ? (byte)Math.Min(8, (int)level) : id == Block.Door ? (byte)(level & 15) : (byte)0; }
         public bool Equals(Voxel other) => Id == other.Id && Level == other.Level;
         public override bool Equals(object obj) => obj is Voxel other && Equals(other);
         public override int GetHashCode() => ((int)Id << 8) | Level;

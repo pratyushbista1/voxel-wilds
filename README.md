@@ -6,11 +6,11 @@ Models are original, editable Blender assets.
 
 ## Play on Windows
 
-Extract `Voxel-Wilds-Unity-Portable-2.0.0.zip` into a new folder, then run `Voxel Wilds.exe`.
+Extract `Voxel-Wilds-Unity-Portable-2.0.2.zip` into a new folder, then run `Voxel Wilds.exe`.
 Keep the executable, `Voxel Wilds_Data`, `UnityPlayer.dll` and the other packaged
 files together. The executable alone is not a portable game.
 
-The setup edition is `Voxel-Wilds-Unity-Setup-2.0.0.exe`. It installs a Start menu
+The setup edition is `Voxel-Wilds-Unity-Setup-2.0.2.exe`. It installs a Start menu
 shortcut and an uninstaller. Builds are unsigned, so Windows may show a publisher
 warning. Check the download against `UNITY-PACKAGES-SHA256.txt` before sharing it.
 The installed edition saves to `%APPDATA%/VoxelWildsUnity/saves/` when launched
@@ -51,6 +51,10 @@ player after three seconds. There are no respawn or teleport-to-spawn buttons.
 Worlds are seeded and generated in 16-block chunks. Terrain includes caves, ores,
 trees, rivers, villages, village chests and underground dungeons. A village is
 available near X 40, Z 40 in every seed. Villagers wander and flee nearby threats.
+
+Village houses have wooden doors. Right-click either half to open or close a door.
+Crafted doors occupy two blocks and need a solid floor; breaking either half removes
+the pair and drops one door in Survival. Door orientation and open state are saved.
 
 Survival includes damage, hunger, armor, shields, tool durability, mining, crafting,
 chests and furnaces. Cows, pigs, sheep and chickens drop meat. Cook raw meat with
@@ -124,10 +128,38 @@ unlocks the exit. Destroyed crystals and the defeated boss remain recorded in th
 
 ## Settings
 
-Adjust view distance, field of view, mouse sensitivity, brightness, entity distance,
-shadows, clouds, fog, view bobbing, fullscreen and difficulty. Frame limits include
-30 through 360 FPS and Unlimited. Unlimited disables VSync and the application's
-frame cap; it does not guarantee any particular frame rate and can increase heat.
+The Graphics tab includes Low, Medium, High and Ultra presets, plus individual
+controls for view and mob distance, MSAA, shadow quality, shadow resolution and
+distance, texture filtering, anisotropic filtering, block-corner shading, clouds,
+fog, animated water and fullscreen. Scroll down for cinematic lighting, bloom
+strength and exposure. The Gameplay tab contains field of view, mouse sensitivity,
+view bobbing, volume and difficulty. Changes are saved automatically.
+
+Frame limits include 30 through 360 FPS and Unlimited. With VSync enabled, the
+display refresh rate takes precedence over the stored frame limit. Turn VSync off
+and select Unlimited to remove the game's frame cap. This does not guarantee any
+particular frame rate and can increase heat and power use.
+
+The first-person view has a visible arm and hand, including when the selected slot
+is empty. Mining and attacks use repeating swing arcs, held items lower during
+switches, and walking bob follows distance traveled. View bobbing can be disabled.
+
+## Graphics
+
+The 2.0.1 renderer keeps the blocky world and original pixel art while aiming for a
+Minecraft-style shader-pack look. Blocks have distinct face textures, cast and
+receive sunlight shadows, and use adjustable corner shading. Grass tufts and
+crossed plant meshes add detail. Placed chests, beds, lanterns and campfires use the
+original Blender models, and nearby light-emitting blocks illuminate their surroundings.
+
+The sky changes through dawn, daylight, sunset and starry nights. Water has animated
+surface ripples, sun highlights and sky-color reflections. High and Ultra presets
+enable cinematic HDR tonemapping and bloom; these effects can also be adjusted
+independently. Low and Medium leave cinematic effects off by default.
+
+These are stylized real-time effects, not ray tracing or photorealistic materials.
+Water reflects the sky color, not a traced image of nearby structures. Fluid flow
+and collision rules are separate from the visual water animation toggle.
 
 ## Saves
 
@@ -168,6 +200,8 @@ Full local validation and building:
 ./scripts/test-unity.ps1
 ./scripts/build-unity.ps1 -SkipPackage
 ./scripts/test-player.ps1
+./scripts/test-graphics.ps1
+./scripts/test-interactions.ps1
 ./scripts/package-unity.ps1
 ./scripts/test-unity-installer.ps1
 ```
@@ -176,6 +210,8 @@ The editor scripts find Unity in `tools/Unity-6000.3.23f1/`, the standard Hub
 installation path, or `UNITY_EDITOR_PATH`. API compilation uses the installed
 Unity assemblies, not mock engine types. Player tests create disposable worlds
 under `.cache/` and retain logs and screenshots under `artifacts/`.
+The separate graphics check uses a fixed scene and camera to exercise quality
+settings and capture daytime, sunset and nighttime views on a real graphics device.
 
 Packaging requires NSIS 3. Install it in its standard location, put `makensis.exe`
 on `PATH`, or pass `-Compiler <path-to-makensis.exe>` to `package-unity.ps1`.

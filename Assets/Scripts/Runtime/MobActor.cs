@@ -187,8 +187,10 @@ namespace VoxelWilds
                 velocity.x = Mathf.Lerp(velocity.x, desired.x, blend);
                 velocity.z = Mathf.Lerp(velocity.z, desired.z, blend);
             }
+            Vector3 beforeMove = transform.position;
             Move(dt, wet, chase);
-            visual.Animate(dt, Flat(velocity).magnitude, attackTime / .55f, hurtTime, fuse, chase);
+            float actualSpeed = Flat(transform.position - beforeMove).magnitude / Mathf.Max(.0001f, dt);
+            visual.Animate(dt, grounded || wet || Definition.Flying ? actualSpeed : 0, attackTime / .55f, hurtTime, fuse, chase);
         }
         void BeginAttack() { attackTime = .55f; attackLanded = false; cooldown = Kind == MobKind.Blaze ? 2.2f : Kind == MobKind.Skeleton ? 2.6f : 1.25f; }
         void Environment(float dt, Block feet)

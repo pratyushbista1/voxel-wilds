@@ -133,7 +133,11 @@ public static class WorldTests
         {
             Spec.True(world.Solid(marker.Position.Down), "Villager floor");
             Spec.True(!world.Solid(marker.Position) && !world.Solid(marker.Position.Up), "Villager room");
-            Spec.Equal(Block.Air, world.GetBlock(marker.Position + new Cell(0, 0, 3)), "Doorway is walkable");
+            Cell entrance = marker.Position + new Cell(0, 0, 3);
+            Spec.Equal(Block.Door, world.GetBlock(entrance), "House has a wooden door");
+            Spec.True(DoorRules.Paired(world.Get(entrance), world.Get(entrance.Up)), "Door has both halves");
+            Spec.Equal(2, DoorRules.Facing(world.Get(entrance)), "Door faces the front path");
+            Spec.True(DoorRules.Supports(world.GetBlock(entrance.Down)), "Door has a solid threshold");
         }
         Spec.True(world.Markers.Count(m => m.Kind == "chest" && m.Mob == "village") >= 2);
     }

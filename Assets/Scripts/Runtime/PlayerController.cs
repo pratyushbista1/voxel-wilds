@@ -6,6 +6,7 @@ namespace VoxelWilds
     public sealed class PlayerController : MonoBehaviour
     {
         public Camera Eye { get; private set; }
+        public FirstPersonView View { get; private set; }
         public Inventory Inventory = new Inventory();
         public bool IsCreative, Flying;
         public float Health = 20, Hunger = 20, Air = 10, Saturation = 5;
@@ -22,9 +23,7 @@ namespace VoxelWilds
         private Vector3 velocity;
         private float hitCooldown, attackCooldown, useCooldown, regeneration, foodTimer, hazardTimer, fallStart, previousSpace, bowCharge;
         private Cell mining;
-        private Transform hand;
-        private int handItem = -1;
-        private float gait, swing;
+        private float gait, cameraWalkWeight;
         private LineRenderer selection;
         public void Init(GameSession session)
         {
@@ -32,12 +31,12 @@ namespace VoxelWilds
             controller=gameObject.AddComponent<CharacterController>();controller.height=1.8f;controller.radius=.3f;controller.center=new Vector3(0,.9f,0);controller.stepOffset=.05f;controller.skinWidth=.025f;controller.slopeLimit=45;
             var cameraObject=new GameObject("Eyes");cameraObject.transform.SetParent(transform,false);cameraObject.transform.localPosition=new Vector3(0,1.62f,0);
             Eye=cameraObject.AddComponent<Camera>();Eye.clearFlags=CameraClearFlags.SolidColor;Eye.nearClipPlane=.055f;Eye.farClipPlane=200;Eye.tag="MainCamera";cameraObject.AddComponent<AudioListener>();
-            hand=new GameObject("Held item").transform;hand.SetParent(Eye.transform,false);
+            View=cameraObject.AddComponent<FirstPersonView>();View.Init(this,game.Renderer);
             var outline=new GameObject("Target outline");selection=outline.AddComponent<LineRenderer>();selection.material=new Material(Shader.Find("Sprites/Default"));selection.startColor=selection.endColor=new Color(.08f,.10f,.1f,.8f);selection.startWidth=selection.endWidth=.012f;selection.positionCount=16;selection.useWorldSpace=true;
         }
         public void Teleport(Vector3 position)
         {
-            controller.enabled=false;transform.position=position;controller.enabled=true;velocity=Vector3.zero;fallStart=position.y;MiningProgress=0;Physics.SyncTransforms();
+            controller.enabled=false;transform.position=position;controller.enabled=true;velocity=Vector3.zero;fallStart=position.y;MiningProgress=0;gait=cameraWalkWeight=0;View.ResetMotion();Eye.transform.localPosition=new Vector3(0,1.62f,0);Physics.SyncTransforms();
         }
         public void ResetVitals(){Health=Hunger=20;Air=10;Saturation=5;hitCooldown=1;foodTimer=hazardTimer=regeneration=0;Flying=false;}
         private void Update()
@@ -48,9 +47,11 @@ namespace VoxelWilds
             var feet=ToCell(transform.position+Vector3.up*.1f);Block fluid=game.World.GetBlock(feet);
             InWater=fluid==Block.Water;bool swimming=InWater||fluid==Block.Lava;
             bool control=!game.Hud.IsOpen;
+            Vector2 lookDelta=Vector2.zero;
             if(control)
             {
                 float mx=Input.GetAxisRaw("Mouse X")*game.Settings.Sensitivity,my=Input.GetAxisRaw("Mouse Y")*game.Settings.Sensitivity;
+                lookDelta=new Vector2(mx,my);
                 transform.Rotate(0,mx,0);Pitch=Mathf.Clamp(Pitch-my,-89,89);Eye.transform.localRotation=Quaternion.Euler(Pitch,0,0);
                 for(int i=0;i<9;i++)if(Input.GetKeyDown(KeyCode.Alpha1+i))Inventory.Selected=i;
                 float scroll=Input.mouseScrollDelta.y;if(scroll!=0)Inventory.Selected=(Inventory.Selected+(scroll>0?8:1))%9;
@@ -82,10 +83,12 @@ namespace VoxelWilds
                 Vector3 projected=transform.position+move*dt;
                 if(!game.World.Solid(ToCell(projected+new Vector3(0,-.2f,0))))move=Vector3.zero;
             }
+            Vector3 beforeMove=transform.position;
             controller.Move((move+velocity)*dt);velocity.x=Mathf.MoveTowards(velocity.x,0,12*dt);velocity.z=Mathf.MoveTowards(velocity.z,0,12*dt);
+            Vector3 travelled=transform.position-beforeMove;travelled.y=0;float walkedDistance=travelled.magnitude;
             Vitals(dt,move.magnitude,fluid);
             if(transform.position.y < -20)Damage(100,transform.position);
-            if(!control){MiningProgress=0;HasTarget=false;selection.enabled=false;bowCharge=0;AnimateHand(dt,false);return;}
+            if(!control){MiningProgress=0;HasTarget=false;selection.enabled=false;bowCharge=0;AnimateHand(dt,0,false,Vector2.zero,false);return;}
             HasTarget=Trace(Eye.transform.position,Eye.transform.forward,IsCreative?6:4.5f,out var hit,out var previous,Inventory.Held?.Id==Items.EmptyBucket);
             Target=hit;Adjacent=previous;DrawSelection();
             if(Input.GetMouseButton(0))MineOrAttack(dt);else MiningProgress=0;
@@ -96,7 +99,7 @@ namespace VoxelWilds
                 if(Input.GetMouseButton(1))bowCharge=Mathf.Min(1,bowCharge+dt);
                 if(Input.GetMouseButtonUp(1))
                 {
-                    if(bowCharge>.15f&&(IsCreative||Inventory.Remove(Items.Arrow,1))){game.Mobs.ShootArrow(Eye.transform.position+Eye.transform.forward*.5f,Eye.transform.forward,bowCharge);if(!IsCreative)Inventory.WearSelected(1);swing=1;}
+                    if(bowCharge>.15f&&(IsCreative||Inventory.Remove(Items.Arrow,1))){game.Mobs.ShootArrow(Eye.transform.position+Eye.transform.forward*.5f,Eye.transform.forward,bowCharge);if(!IsCreative)Inventory.WearSelected(1);View.TriggerSwing(FirstPersonView.Action.Attack);}
                     bowCharge=0;
                 }
             }
@@ -104,9 +107,9 @@ namespace VoxelWilds
             {
                 if(Hunger<20){foodTimer+=dt;if(foodTimer>=1.6f){Hunger=Mathf.Min(20,Hunger+Items.Food(item));Saturation=Mathf.Min(20,Saturation+Items.Saturation(item));ConsumeHeld();foodTimer=0;}}else foodTimer=0;
             }
-            else if(Input.GetMouseButtonDown(1)&&useCooldown<=0){if(game.Use(HasTarget,Target,Adjacent)){useCooldown=.2f;swing=1;}}
+            else if(Input.GetMouseButtonDown(1)&&useCooldown<=0){if(game.Use(HasTarget,Target,Adjacent)){useCooldown=.2f;View.TriggerSwing(FirstPersonView.Action.Use);}}
             else foodTimer=0;
-            AnimateHand(dt,move.sqrMagnitude>1&&grounded);
+            AnimateHand(dt,walkedDistance,walkedDistance>.0001f&&grounded&&!Flying&&!swimming,lookDelta,Input.GetMouseButton(1)&&Items.IsFood(item)&&Hunger<20);
         }
         private void Vitals(float dt,float moving,Block fluid)
         {
@@ -157,13 +160,14 @@ namespace VoxelWilds
         private void MineOrAttack(float dt)
         {
             if(attackCooldown<=0 && game.Mobs.Attack(new Ray(Eye.transform.position,Eye.transform.forward),IsCreative?6:3.3f,Items.AttackDamage(Inventory.Held?.Id??0)))
-            {attackCooldown=.55f;swing=1;MiningProgress=0;if(!IsCreative)Inventory.WearSelected(1);return;}
-            if(!HasTarget){MiningProgress=0;return;}
+            {attackCooldown=.55f;View.TriggerSwing(FirstPersonView.Action.Attack);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(1);return;}
+            if(!HasTarget){MiningProgress=0;View.TriggerSwing(FirstPersonView.Action.Attack);return;}
             if(Target!=mining){mining=Target;MiningProgress=0;}
             Block id=game.World.GetBlock(Target);float hardness=Blocks.Hardness(id);
+            View.TriggerSwing(FirstPersonView.Action.Mine);
             if(float.IsInfinity(hardness))return;
             float duration=IsCreative?.12f:Mathf.Max(.1f,hardness*(Items.CanHarvest(Inventory.Held?.Id??0,id)?1.5f:5)/Items.MiningSpeed(Inventory.Held?.Id??0,id));
-            MiningProgress+=dt/duration;swing=Mathf.Max(swing,.6f);
+            MiningProgress+=dt/duration;
             if(MiningProgress>=1){game.BreakBlock(Target);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(1);}
         }
         public bool Trace(Vector3 origin,Vector3 direction,float range,out Cell hit,out Cell previous,bool fluids=false)
@@ -171,39 +175,30 @@ namespace VoxelWilds
             previous=ToCell(origin);hit=previous;
             for(float distance=0;distance<=range;distance+=.025f)
             {
-                Cell cell=ToCell(origin+direction*distance);Block id=game.World.GetBlock(cell);
+                Vector3 point=origin+direction*distance;Cell cell=ToCell(point);Voxel voxel=game.World.Get(cell);Block id=voxel.Id;
+                if(id==Block.Door&&!DoorRules.Contains(voxel,point.x-cell.X,point.y-cell.Y,point.z-cell.Z)){previous=cell;continue;}
                 if(id!=Block.Air && (fluids||!Blocks.IsFluid(id)) && id!=Block.PortalX&&id!=Block.PortalZ&&id!=Block.EndPortal){hit=cell;return true;}
                 previous=cell;
             }
             return false;
         }
-        private void AnimateHand(float dt,bool moving)
+        private void AnimateHand(float dt,float walkedDistance,bool moving,Vector2 lookDelta,bool eating)
         {
-            int item=Inventory.Held?.Id??0;
-            if(item!=handItem)
-            {
-                handItem=item;foreach(Transform child in hand)Destroy(child.gameObject);
-                string model=item==Items.IronSword||item==Items.CrystalSword?"sword":Items.MiningTier(item)>0?"pickaxe":null;
-                GameObject prefab=model==null?null:Resources.Load<GameObject>("Models/"+model);
-                GameObject visual=prefab?Instantiate(prefab,hand):GameObject.CreatePrimitive(PrimitiveType.Cube);
-                if(!prefab)
-                {
-                    visual.transform.SetParent(hand,false);Destroy(visual.GetComponent<Collider>());var mat=new Material(Shader.Find("Standard"));uint color=Blocks.ColorRgb(Items.PlaceBlock(item));mat.color=item==0?new Color(.65f,.44f,.3f):new Color(((color>>16)&255)/255f,((color>>8)&255)/255f,(color&255)/255f);visual.GetComponent<Renderer>().material=mat;
-                }
-                visual.transform.localScale=Vector3.one*(prefab?.38f:.2f);
-            }
-            gait+=dt*(moving?10:1);swing=Mathf.MoveTowards(swing,0,dt*4);
-            float bob=game.Settings.Bobbing&&moving?Mathf.Sin(gait)*.03f:0;
-            Eye.transform.localPosition=Vector3.Lerp(Eye.transform.localPosition,new Vector3(0,1.62f+bob,0),dt*12);
-            hand.localPosition=new Vector3(.42f-swing*.12f,-.34f+bob-swing*.1f,.65f);
-            hand.localRotation=Quaternion.Euler(10+swing*55,-20,8+swing*25);
+            moving&=game.Settings.Bobbing;
+            float smooth=1-Mathf.Exp(-12*dt);
+            cameraWalkWeight=Mathf.Lerp(cameraWalkWeight,moving?1:0,smooth);
+            if(moving)gait+=walkedDistance*5.6f;
+            float bobX=Mathf.Sin(gait)*.012f*cameraWalkWeight;
+            float bobY=(Mathf.Abs(Mathf.Cos(gait))-.5f)*.018f*cameraWalkWeight;
+            Eye.transform.localPosition=Vector3.Lerp(Eye.transform.localPosition,new Vector3(bobX,1.62f+bobY,0),smooth);
+            View.Advance(dt,walkedDistance,moving,lookDelta,eating,bowCharge,Blocking);
         }
         private void DrawSelection()
         {
             selection.enabled=HasTarget;if(!HasTarget)return;
-            Vector3 p=new Vector3(Target.X,Target.Y,Target.Z)-Vector3.one*.003f;float s=1.006f;
+            Bounds bounds=BlockShape.Bounds(Target,game.World.Get(Target));Vector3 p=bounds.min-Vector3.one*.003f,size=bounds.size+Vector3.one*.006f;
             Vector3[] points={new Vector3(0,0,0),new Vector3(1,0,0),new Vector3(1,0,1),new Vector3(0,0,1),new Vector3(0,0,0),new Vector3(0,1,0),new Vector3(1,1,0),new Vector3(1,0,0),new Vector3(1,1,0),new Vector3(1,1,1),new Vector3(1,0,1),new Vector3(1,1,1),new Vector3(0,1,1),new Vector3(0,0,1),new Vector3(0,1,1),new Vector3(0,1,0)};
-            for(int i=0;i<points.Length;i++)selection.SetPosition(i,p+points[i]*s);
+            for(int i=0;i<points.Length;i++)selection.SetPosition(i,p+Vector3.Scale(points[i],size));
         }
         public static Cell ToCell(Vector3 p)=>new Cell(Mathf.FloorToInt(p.x),Mathf.FloorToInt(p.y),Mathf.FloorToInt(p.z));
         private void OnDestroy(){if(selection)Destroy(selection.gameObject);}

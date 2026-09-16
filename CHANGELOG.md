@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.0.2
+
+- Added a visible first-person arm and hand, smoother equip transitions, and repeating mining and attack swings.
+- Corrected alternating limb movement, grounded walking cadence, and idle settling for mobs.
+- Added working two-block village doors with saved orientation and open state.
+- Added interaction checks for hand visibility, animation cycles, door collision, and door save behavior.
+
+## 2.0.1
+
+- Replaced flat block colors with original face-specific pixel textures and an atlas with mip padding.
+- Added sunlight shadow receiving, adjustable block-corner shading and nearby block lighting.
+- Added a day/night gradient sky, sunset colors, a sun, a moon and stars.
+- Added animated water highlights and sky-color reflections, plus glowing lava and portals.
+- Restored detailed Blender models for placed chests, beds, lanterns and campfires.
+- Added grass tufts, crossed plant meshes and textured blocks in the player's hand.
+- Added optional HDR cinematic tonemapping, bloom and exposure controls.
+- Added Low, Medium, High and Ultra presets, MSAA, shadow resolution and distance, texture filtering and anisotropic filtering.
+- Split settings into scrollable Graphics and Gameplay tabs, with separate VSync and frame-limit controls.
+- Added an isolated native graphics-check scene with saved comparison screenshots.
+- Kept 2.0.0 builds as a launcher fallback and preserved existing Unity saves.
+
 ## 2.0.0
 
 - Replaced the active browser and Electron application with a Unity 6 C# project.
