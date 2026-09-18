@@ -5,7 +5,7 @@ Unicode true
 !include "x64.nsh"
 
 !ifndef VERSION
-  !define VERSION "2.0.2"
+  !define VERSION "2.0.3"
 !endif
 !define PRODUCT "Voxel Wilds - Unity Edition"
 !define REGISTRY "Software\Microsoft\Windows\CurrentVersion\Uninstall\VoxelWildsUnity"

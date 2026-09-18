@@ -80,9 +80,11 @@ namespace VoxelWilds
             lowering = Mathf.MoveTowards(lowering, targetLowering, dt * 8);
             if (lowering >= 1 && selected != PresentedItem) Present(selected);
             EquipProgress = 1 - lowering;
-            walkWeight = Mathf.Lerp(walkWeight, moving ? 1 : 0, smooth);
-            if (moving) gait += Mathf.Clamp(walkedDistance, 0, .65f) * 5.6f;
-            sway = Vector2.Lerp(sway, Vector2.ClampMagnitude(lookDelta, 10) * .0028f, smooth);
+            float walkAmount = moving && dt > 0 ? Mathf.Clamp01(walkedDistance / dt / PlayerMotion.WalkSpeed) : 0;
+            walkWeight = Mathf.Lerp(walkWeight, walkAmount, smooth);
+            gait = PlayerMotion.AdvanceGait(gait, walkedDistance, moving);
+            Vector2 lookRate = dt > 0 ? lookDelta / (60 * dt) : Vector2.zero;
+            sway = Vector2.Lerp(sway, Vector2.ClampMagnitude(lookRate, 10) * .0015f, smooth);
             if (IsSwinging)
             {
                 SwingProgress = Mathf.Min(1, SwingProgress + dt / swingDuration);
@@ -91,8 +93,8 @@ namespace VoxelWilds
             float t = SwingProgress;
             float strike = Mathf.Sin(t * Mathf.PI);
             float arc = Mathf.Sin(Mathf.Sqrt(t) * Mathf.PI);
-            float bobX = Mathf.Sin(gait) * .017f * walkWeight;
-            float bobY = (Mathf.Abs(Mathf.Cos(gait)) - .5f) * .018f * walkWeight;
+            float bobX = Mathf.Sin(gait) * .012f * walkWeight;
+            float bobY = (Mathf.Abs(Mathf.Cos(gait)) - .5f) * .010f * walkWeight;
             Vector3 position = new Vector3(.33f + bobX - sway.x, -.27f + bobY - sway.y - lowering * .46f, .60f - lowering * .10f);
             Vector3 rotation = new Vector3(-25 + sway.y * 170, -12 + sway.x * 190, -5 - bobX * 80);
             Vector3 gripRotation = new Vector3(25, 15, -10);

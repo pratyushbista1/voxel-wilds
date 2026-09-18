@@ -75,6 +75,7 @@ namespace VoxelWilds
             if(Argument("-voxel-smoke")!=null || Environment.GetCommandLineArgs().Contains("-voxel-smoke"))gameObject.AddComponent<SimulationSmoke>();
             if(Environment.GetCommandLineArgs().Contains("-voxel-visual-check"))gameObject.AddComponent<GraphicsSmoke>();
             if(Environment.GetCommandLineArgs().Contains("-voxel-interaction-check"))gameObject.AddComponent<InteractionSmoke>();
+            if(Environment.GetCommandLineArgs().Contains("-voxel-inventory-check"))gameObject.AddComponent<InventorySmoke>();
         }
         public static string Argument(string key)
         {

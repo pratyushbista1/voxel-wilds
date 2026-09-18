@@ -17,13 +17,17 @@ namespace VoxelWilds
         public Cell Adjacent { get; private set; }
         public float Pitch;
         public bool InWater { get; private set; }
+        public bool Grounded { get; private set; }
+        public bool WalkingOnGround { get; private set; }
+        public bool IsSprinting { get; private set; }
+        public float HorizontalSpeed { get; private set; }
         public bool Blocking => game.Playing && !game.Hud.IsOpen && Input.GetMouseButton(1) && (Inventory.Held?.Id == Items.Shield || Inventory.Offhand?.Id == Items.Shield);
         private GameSession game;
         private CharacterController controller;
-        private Vector3 velocity;
+        private Vector3 velocity, planarVelocity;
         private float hitCooldown, attackCooldown, useCooldown, regeneration, foodTimer, hazardTimer, fallStart, previousSpace, bowCharge;
         private Cell mining;
-        private float gait, cameraWalkWeight;
+        private float gait, cameraWalkWeight, sprintViewWeight;
         private LineRenderer selection;
         public void Init(GameSession session)
         {
@@ -36,7 +40,7 @@ namespace VoxelWilds
         }
         public void Teleport(Vector3 position)
         {
-            controller.enabled=false;transform.position=position;controller.enabled=true;velocity=Vector3.zero;fallStart=position.y;MiningProgress=0;gait=cameraWalkWeight=0;View.ResetMotion();Eye.transform.localPosition=new Vector3(0,1.62f,0);Physics.SyncTransforms();
+            controller.enabled=false;transform.position=position;controller.enabled=true;velocity=planarVelocity=Vector3.zero;fallStart=position.y;MiningProgress=0;gait=cameraWalkWeight=sprintViewWeight=0;HorizontalSpeed=0;Grounded=WalkingOnGround=IsSprinting=false;View.ResetMotion();Eye.transform.localPosition=new Vector3(0,1.62f,0);Eye.fieldOfView=game.Settings.FieldOfView;Physics.SyncTransforms();
         }
         public void ResetVitals(){Health=Hunger=20;Air=10;Saturation=5;hitCooldown=1;foodTimer=hazardTimer=regeneration=0;Flying=false;}
         private void Update()
@@ -60,33 +64,12 @@ namespace VoxelWilds
                 if(IsCreative && Input.GetKeyDown(KeyCode.G))Flying=!Flying;
                 if(Input.GetKeyDown(KeyCode.Space)) { if(IsCreative && Time.time-previousSpace<.27f)Flying=!Flying;previousSpace=Time.time; }
             }
-            Vector3 input=Vector3.zero;
-            if(control)input=new Vector3((Input.GetKey(KeyCode.D)?1:0)-(Input.GetKey(KeyCode.A)?1:0),0,(Input.GetKey(KeyCode.W)?1:0)-(Input.GetKey(KeyCode.S)?1:0));
-            bool sprint=control&&Input.GetKey(KeyCode.LeftControl)&&Hunger>6, sneak=control&&Input.GetKey(KeyCode.LeftShift);
-            float speed=Flying?10:swimming?2.5f:sneak?1.5f:sprint?5.8f:4.3f;
-            Vector3 move=transform.TransformDirection(Vector3.ClampMagnitude(input,1))*speed;
-            bool grounded=controller.isGrounded;
-            if(Flying){velocity.y=control?((Input.GetKey(KeyCode.Space)?1:0)-(sneak?1:0))*speed:0;}
-            else if(swimming){velocity.y=Mathf.MoveTowards(velocity.y,control&&Input.GetKey(KeyCode.Space)?3:-1.8f,12*dt);fallStart=transform.position.y;}
-            else
-            {
-                if(grounded)
-                {
-                    if(velocity.y < -12 && fallStart-transform.position.y>3)Damage(Mathf.Floor(fallStart-transform.position.y-3),transform.position);
-                    fallStart=transform.position.y;velocity.y=-2;
-                    if(control&&Input.GetKeyDown(KeyCode.Space)){velocity.y=8.2f;fallStart=transform.position.y;}
-                }
-                else {fallStart=Mathf.Max(fallStart,transform.position.y);velocity.y=Mathf.Max(-45,velocity.y-24*dt);}
-            }
-            if(sneak&&grounded&&!Flying&&!swimming)
-            {
-                Vector3 projected=transform.position+move*dt;
-                if(!game.World.Solid(ToCell(projected+new Vector3(0,-.2f,0))))move=Vector3.zero;
-            }
-            Vector3 beforeMove=transform.position;
-            controller.Move((move+velocity)*dt);velocity.x=Mathf.MoveTowards(velocity.x,0,12*dt);velocity.z=Mathf.MoveTowards(velocity.z,0,12*dt);
-            Vector3 travelled=transform.position-beforeMove;travelled.y=0;float walkedDistance=travelled.magnitude;
-            Vitals(dt,move.magnitude,fluid);
+            Vector2 input=Vector2.zero;
+            if(control)input=new Vector2((Input.GetKey(KeyCode.D)?1:0)-(Input.GetKey(KeyCode.A)?1:0),(Input.GetKey(KeyCode.W)?1:0)-(Input.GetKey(KeyCode.S)?1:0));
+            int heldItem=Inventory.Held?.Id??0;
+            bool usingItem=control&&Input.GetMouseButton(1)&&(Blocking||heldItem==Items.Bow||(Items.IsFood(heldItem)&&Hunger<20));
+            float walkedDistance=StepMovement(dt,input,Input.GetKey(KeyCode.LeftControl),Input.GetKey(KeyCode.LeftShift),Input.GetKeyDown(KeyCode.Space),Input.GetKey(KeyCode.Space),control,swimming,usingItem);
+            Vitals(dt,HorizontalSpeed,fluid);
             if(transform.position.y < -20)Damage(100,transform.position);
             if(!control){MiningProgress=0;HasTarget=false;selection.enabled=false;bowCharge=0;AnimateHand(dt,0,false,Vector2.zero,false);return;}
             HasTarget=Trace(Eye.transform.position,Eye.transform.forward,IsCreative?6:4.5f,out var hit,out var previous,Inventory.Held?.Id==Items.EmptyBucket);
@@ -109,7 +92,72 @@ namespace VoxelWilds
             }
             else if(Input.GetMouseButtonDown(1)&&useCooldown<=0){if(game.Use(HasTarget,Target,Adjacent)){useCooldown=.2f;View.TriggerSwing(FirstPersonView.Action.Use);}}
             else foodTimer=0;
-            AnimateHand(dt,walkedDistance,walkedDistance>.0001f&&grounded&&!Flying&&!swimming,lookDelta,Input.GetMouseButton(1)&&Items.IsFood(item)&&Hunger<20);
+            AnimateHand(dt,walkedDistance,WalkingOnGround,lookDelta,Input.GetMouseButton(1)&&Items.IsFood(item)&&Hunger<20);
+        }
+        public float StepMovement(float dt,Vector2 input,bool sprintHeld,bool sneak,bool jumpPressed,bool riseHeld,bool hasControl,bool swimming,bool usingItem=false)
+        {
+            dt=Mathf.Clamp(dt,0,.1f);
+            if(dt<=0)return 0;
+            if(!hasControl){input=Vector2.zero;sprintHeld=sneak=jumpPressed=riseHeld=false;}
+            PlayerMotion.NormalizeInput(ref input.x,ref input.y);
+            bool grounded=controller.isGrounded&&velocity.y<=0;
+            bool wantsSprint=PlayerMotion.CanSprint(input.y,sprintHeld,sneak,IsCreative,Hunger,swimming,Flying,usingItem);
+            float speed=Flying?10:swimming?2.5f:sneak?PlayerMotion.SneakSpeed:wantsSprint?PlayerMotion.SprintSpeed:PlayerMotion.WalkSpeed;
+            Vector3 target=transform.TransformDirection(new Vector3(input.x,0,input.y))*speed;
+            float response=Flying||swimming?8:grounded?(input.sqrMagnitude>.001f?18:22):input.sqrMagnitude>.001f?3:.35f;
+            if(!hasControl)response=22;
+            float dx=PlayerMotion.IntegrateVelocity(planarVelocity.x,target.x,response,dt,out planarVelocity.x);
+            float dz=PlayerMotion.IntegrateVelocity(planarVelocity.z,target.z,response,dt,out planarVelocity.z);
+            float dy;
+            bool jumped=false;
+            if(Flying){velocity.y=((riseHeld?1:0)-(sneak?1:0))*speed;dy=velocity.y*dt;fallStart=transform.position.y;}
+            else if(swimming){velocity.y=Mathf.MoveTowards(velocity.y,riseHeld?3:-1.8f,12*dt);dy=velocity.y*dt;fallStart=transform.position.y;}
+            else if(grounded)
+            {
+                fallStart=transform.position.y;
+                if(jumpPressed)
+                {
+                    velocity.y=PlayerMotion.JumpSpeed;
+                    dy=PlayerMotion.IntegrateGravity(velocity.y,dt,out velocity.y);
+                    jumped=true;
+                }
+                else {velocity.y=-2;dy=velocity.y*dt;}
+            }
+            else
+            {
+                fallStart=Mathf.Max(fallStart,transform.position.y);
+                dy=PlayerMotion.IntegrateGravity(velocity.y,dt,out velocity.y);
+            }
+            if(sneak&&grounded&&!Flying&&!swimming)
+            {
+                Vector3 projected=transform.position+new Vector3(dx,0,dz);
+                if(!game.World.Solid(ToCell(projected+new Vector3(0,-.2f,0)))){dx=dz=0;planarVelocity=Vector3.zero;}
+            }
+            Vector3 beforeMove=transform.position;
+            float impactSpeed=velocity.y;
+            Vector3 knockback=new Vector3(velocity.x,0,velocity.z)*dt;
+            CollisionFlags collisions=controller.Move(new Vector3(dx,dy,dz)+knockback);
+            Vector3 travelled=transform.position-beforeMove;travelled.y=0;
+            float walkedDistance=travelled.magnitude;
+            HorizontalSpeed=walkedDistance/dt;
+            Grounded=(collisions&CollisionFlags.Below)!=0&&!Flying&&!swimming&&velocity.y<=0;
+            if((collisions&CollisionFlags.Above)!=0&&velocity.y>0)velocity.y=0;
+            if((collisions&CollisionFlags.Sides)!=0)
+            {
+                if(Mathf.Abs(travelled.x)<Mathf.Abs(dx)*.6f)planarVelocity.x=0;
+                if(Mathf.Abs(travelled.z)<Mathf.Abs(dz)*.6f)planarVelocity.z=0;
+            }
+            if(Grounded)
+            {
+                if(!grounded&&impactSpeed<-12&&fallStart-transform.position.y>3)Damage(Mathf.Floor(fallStart-transform.position.y-3),transform.position);
+                velocity.y=-2;fallStart=transform.position.y;
+            }
+            velocity.x=Mathf.MoveTowards(velocity.x,0,12*dt);velocity.z=Mathf.MoveTowards(velocity.z,0,12*dt);
+            WalkingOnGround=Grounded&&!jumped&&input.sqrMagnitude>.001f&&HorizontalSpeed>.08f;
+            IsSprinting=wantsSprint&&HorizontalSpeed>PlayerMotion.WalkSpeed*.7f;
+            sprintViewWeight=Mathf.Lerp(sprintViewWeight,IsSprinting?1:0,1-Mathf.Exp(-8*dt));
+            Eye.fieldOfView=game.Settings.FieldOfView*(1+.075f*sprintViewWeight);
+            return walkedDistance;
         }
         private void Vitals(float dt,float moving,Block fluid)
         {
@@ -186,10 +234,11 @@ namespace VoxelWilds
         {
             moving&=game.Settings.Bobbing;
             float smooth=1-Mathf.Exp(-12*dt);
-            cameraWalkWeight=Mathf.Lerp(cameraWalkWeight,moving?1:0,smooth);
-            if(moving)gait+=walkedDistance*5.6f;
-            float bobX=Mathf.Sin(gait)*.012f*cameraWalkWeight;
-            float bobY=(Mathf.Abs(Mathf.Cos(gait))-.5f)*.018f*cameraWalkWeight;
+            float walkAmount=moving&&dt>0?Mathf.Clamp01(walkedDistance/dt/PlayerMotion.WalkSpeed):0;
+            cameraWalkWeight=Mathf.Lerp(cameraWalkWeight,walkAmount,smooth);
+            gait=PlayerMotion.AdvanceGait(gait,walkedDistance,moving);
+            float bobX=Mathf.Sin(gait)*.010f*cameraWalkWeight;
+            float bobY=(Mathf.Abs(Mathf.Cos(gait))-.5f)*.014f*cameraWalkWeight;
             Eye.transform.localPosition=Vector3.Lerp(Eye.transform.localPosition,new Vector3(bobX,1.62f+bobY,0),smooth);
             View.Advance(dt,walkedDistance,moving,lookDelta,eating,bowCharge,Blocking);
         }

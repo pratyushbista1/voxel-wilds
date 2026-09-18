@@ -6,11 +6,11 @@ Models are original, editable Blender assets.
 
 ## Play on Windows
 
-Extract `Voxel-Wilds-Unity-Portable-2.0.2.zip` into a new folder, then run `Voxel Wilds.exe`.
+Extract `Voxel-Wilds-Unity-Portable-2.0.3.zip` into a new folder, then run `Voxel Wilds.exe`.
 Keep the executable, `Voxel Wilds_Data`, `UnityPlayer.dll` and the other packaged
 files together. The executable alone is not a portable game.
 
-The setup edition is `Voxel-Wilds-Unity-Setup-2.0.2.exe`. It installs a Start menu
+The setup edition is `Voxel-Wilds-Unity-Setup-2.0.3.exe`. It installs a Start menu
 shortcut and an uninstaller. Builds are unsigned, so Windows may show a publisher
 warning. Check the download against `UNITY-PACKAGES-SHA256.txt` before sharing it.
 The installed edition saves to `%APPDATA%/VoxelWildsUnity/saves/` when launched
@@ -78,12 +78,14 @@ Chests contain 27 persistent slots.
 
 Left-click moves stacks; right-click takes half or places one. Shift-click transfers
 items, and number keys swap a hovered slot with the hotbar. Dragging distributes
-single items to visited slots. Recipe-book entries arrange ingredients that are
+equal shares with the left button or one item per slot with the right button.
+The book button toggles a searchable recipe panel with a craftable-only filter.
+Recipe-book entries arrange ingredients that are
 available in the inventory. Click the crafting output to take it, or Shift-click
 to craft repeatedly into the inventory. Overflow is retained or dropped rather
 than discarded.
 
-There are 41 recipes, including tools, armor, beds, buckets, bows and eyes of ender.
+There are 42 recipes, including tools, armor, beds, buckets, bows and eyes of ender.
 Recipes support translated and horizontally mirrored patterns. Furnaces preserve
 fuel and cooking progress, and a lava fuel bucket returns an empty bucket.
 
@@ -144,6 +146,11 @@ The first-person view has a visible arm and hand, including when the selected sl
 is empty. Mining and attacks use repeating swing arcs, held items lower during
 switches, and walking bob follows distance traveled. View bobbing can be disabled.
 
+Walking and sprinting use short acceleration and braking transitions. Sprint with
+Left Ctrl while moving forward; sneaking, using an item or low hunger prevents
+ground sprinting. Sprint gently widens the field of view. Camera and hand bob stop
+when airborne or blocked, and jumping is always manual.
+
 ## Graphics
 
 The 2.0.1 renderer keeps the blocky world and original pixel art while aiming for a
@@ -202,6 +209,7 @@ Full local validation and building:
 ./scripts/test-player.ps1
 ./scripts/test-graphics.ps1
 ./scripts/test-interactions.ps1
+./scripts/test-inventory.ps1 -Visible
 ./scripts/package-unity.ps1
 ./scripts/test-unity-installer.ps1
 ```
@@ -212,6 +220,10 @@ Unity assemblies, not mock engine types. Player tests create disposable worlds
 under `.cache/` and retain logs and screenshots under `artifacts/`.
 The separate graphics check uses a fixed scene and camera to exercise quality
 settings and capture daytime, sunset and nighttime views on a real graphics device.
+The inventory check briefly opens a visible test window on an unlocked desktop.
+It captures both crafting layouts and checks item transfers, recipe placement,
+equipment, controller movement, jumping and landing. Do not interact with that
+window until the checks finish.
 
 Packaging requires NSIS 3. Install it in its standard location, put `makensis.exe`
 on `PATH`, or pass `-Compiler <path-to-makensis.exe>` to `package-unity.ps1`.

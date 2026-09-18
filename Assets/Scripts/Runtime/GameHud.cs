@@ -21,12 +21,26 @@ namespace VoxelWilds
         private Vector2 worldsScroll,catalogScroll,recipesScroll,settingsScroll;
         private int settingsTab;
         private readonly List<WorldEntry> worlds=new List<WorldEntry>();
-        private readonly Dictionary<int,Texture2D> icons=new Dictionary<int,Texture2D>();
-        private GUIStyle text,title,heading,small,button,field,number;
+        private ItemIconAtlas icons;
+        private GUIStyle text,title,heading,small,button,field,number,inventoryText,inventorySmall;
         private Texture2D heart;
         private float width,height,scale;
-        private readonly HashSet<string> dragged=new HashSet<string>();
+        private readonly List<SlotTarget> dragTargets=new List<SlotTarget>();
         private int dragButton=-1;
+        private bool recipeBookOpen,craftableOnly;
+        private string recipeSearch="";
+        private const float InventoryUnit=3;
+        public Rect InventoryPanelRect { get; private set; }
+        public Rect CraftingOutputRect { get; private set; }
+        public Rect RecipeToggleRect { get; private set; }
+        public Rect InventorySlotRect(int index)=>PanelRect(7+(index<9?index:(index-9)%9)*18,index<9?141:83+(index-9)/9*18,18,18);
+        public Rect CraftingSlotRect(int index){int size=screen=="crafting"?3:2;return PanelRect((size==3?29:87)+index%size*18,(size==3?16:25)+index/size*18,18,18);}
+        private sealed class SlotTarget
+        {
+            public string Key;
+            public Func<ItemStack> Read;
+            public Action<ItemStack> Write;
+        }
         private sealed class WorldEntry { public string Path,Name,Details; }
         private static readonly Color Ink=new Color(.075f,.1f,.115f),Panel=new Color(.13f,.17f,.18f,.97f),Accent=new Color(.56f,.75f,.35f),Paper=new Color(.90f,.93f,.88f),Muted=new Color(.79f,.84f,.80f);
         public void Init(GameSession session){game=session;RefreshWorlds();}
@@ -47,7 +61,7 @@ namespace VoxelWilds
                 foreach(var stack in grid)ReturnStack(stack);Array.Clear(grid,0,grid.Length);
             }
             if(IsOpen||screen=="settings")screen=game?.World==null?"title":"game";
-            chest=null;furnace=null;dragged.Clear();dragButton=-1;
+            chest=null;furnace=null;dragTargets.Clear();dragButton=-1;
             ClearTextFocus();
             if(game?.Hud!=null)game.LockCursor();
         }
@@ -55,7 +69,7 @@ namespace VoxelWilds
         private void UpdateTextFocus()
         {
             string focused=GUI.GetNameOfFocusedControl();
-            TextInputFocused=focused=="CreativeSearch"||focused=="WorldName"||focused=="WorldSeed";
+            TextInputFocused=focused=="CreativeSearch"||focused=="RecipeSearch"||focused=="WorldName"||focused=="WorldSeed";
         }
         private string TextField(Rect rect,string value,int maximum,string control)
         {
@@ -84,6 +98,8 @@ namespace VoxelWilds
             heading=new GUIStyle(text){fontSize=25,fontStyle=FontStyle.Bold};
             small=new GUIStyle(text){fontSize=13,normal={textColor=Muted}};
             number=new GUIStyle(text){fontSize=15,alignment=TextAnchor.LowerRight,fontStyle=FontStyle.Bold};
+            inventoryText=new GUIStyle(text){fontSize=21,normal={textColor=new Color(.24f,.24f,.24f)},wordWrap=false};
+            inventorySmall=new GUIStyle(inventoryText){fontSize=16,wordWrap=true};
             button=new GUIStyle(GUI.skin.button){fontSize=17,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter};
             field=new GUIStyle(GUI.skin.textField){fontSize=19,padding=new RectOffset(10,10,10,7)};
             string[] pattern={"00000000","01100110","11111111","11111111","01111110","00111100","00011000","00000000"};
@@ -92,7 +108,8 @@ namespace VoxelWilds
         }
         private void OnGUI()
         {
-            if(game==null)return;Styles();scale=Mathf.Max(.01f,Mathf.Min(Screen.height/720f,Screen.width/960f));width=Screen.width/scale;height=Screen.height/scale;
+            if(game==null)return;bool released=Event.current.rawType==EventType.MouseUp;Styles();scale=Mathf.Max(.01f,Mathf.Min(Screen.height/720f,Screen.width/960f));width=Screen.width/scale;height=Screen.height/scale;
+            if(cursor!=null&&cursor.Empty)cursor=null;
             GUI.matrix=Matrix4x4.Scale(new Vector3(scale,scale,1));tooltip="";UpdateTextFocus();
             if(game.World==null&&screen!="settings")TitleScreen();
             else if(screen=="settings")SettingsScreen();
@@ -110,12 +127,16 @@ namespace VoxelWilds
             }
             if(!string.IsNullOrEmpty(game.LastSaveError))Label(new Rect(16,75,width-32,32),"SAVE ERROR: "+game.LastSaveError,text);
             Vector2 mouse=Event.current.mousePosition;
-            if(cursor!=null&&!cursor.Empty&&IsOpen)DrawStack(new Rect(mouse.x+6,mouse.y+6,48,48),cursor);
+            if(cursor!=null&&!cursor.Empty&&IsOpen)
+            {
+                var shown=cursor.Clone();if(dragTargets.Count>0)shown.Count-=dragTargets.Sum(t=>InventoryTransfer.DistributionAmount(cursor,t.Read(),dragTargets.Count,dragButton==1));
+                if(shown.Count>0)DrawStack(new Rect(mouse.x-21,mouse.y-21,48,48),shown);
+            }
             else if(tooltip.Length>0)
             {
                 float w=Mathf.Min(330,Mathf.Max(130,tooltip.Length*8));Rect tip=new Rect(Mathf.Min(mouse.x+14,width-w-8),Mathf.Min(mouse.y+20,670),w,38);Fill(tip,new Color(.03f,.04f,.055f,.97f));Label(new Rect(tip.x+8,tip.y+6,w-16,28),tooltip,small);
             }
-            if(Event.current.type==EventType.MouseUp){dragged.Clear();dragButton=-1;}
+            if(released)FinishDrag();
         }
         private void TitleScreen()
         {
@@ -147,7 +168,7 @@ namespace VoxelWilds
             }
             if(Button(new Rect(left,621,155,43),"Settings")){previousScreen="title";screen="settings";}
             if(Button(new Rect(left+170,621,130,43),"Quit"))Application.Quit();
-            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.2",small,TextAnchor.MiddleRight);
+            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.3",small,TextAnchor.MiddleRight);
         }
         private void Hud()
         {
@@ -169,8 +190,8 @@ namespace VoxelWilds
                 }
                 if(player.Air<10){Fill(new Rect(width/2-110,y-45,220,6),Ink);Fill(new Rect(width/2-110,y-45,220*player.Air/10,6),new Color(.4f,.77f,.95f));}
             }
-            if(player.Inventory.Held!=null)BackedLabel(new Rect(width/2-260,y-65,520,30),Items.Name(player.Inventory.Held.Id),text,TextAnchor.MiddleCenter);
-            if(player.Inventory.Offhand!=null)DrawStack(new Rect(start-67,y,56,56),player.Inventory.Offhand);
+            if(ValidStack(player.Inventory.Held))BackedLabel(new Rect(width/2-260,y-65,520,30),Items.Name(player.Inventory.Held.Id),text,TextAnchor.MiddleCenter);
+            if(ValidStack(player.Inventory.Offhand))DrawStack(new Rect(start-67,y,56,56),player.Inventory.Offhand);
             BackedLabel(new Rect(17,14,700,24),game.WorldName+"  /  "+game.World.Dimension+"  /  "+(player.IsCreative?"Creative":"Survival"),small);
             Vector3 p=player.transform.position;BackedLabel(new Rect(17,39,700,24),Mathf.FloorToInt(p.x)+", "+Mathf.FloorToInt(p.y)+", "+Mathf.FloorToInt(p.z)+"    "+Mathf.RoundToInt(fps)+" FPS",small);
             BackedLabel(new Rect(17,height-32,800,25),"WASD move   Space jump   E inventory   Esc pause",small);
@@ -189,143 +210,241 @@ namespace VoxelWilds
         }
         private void InventoryScreen()
         {
-            Shade();float sidebar=game.Player.IsCreative?294:screen=="inventory"||screen=="crafting"?274:0;
-            float x=(width-614-sidebar)/2+sidebar,y=72;var inventory=game.Player.Inventory;
-            PanelBox(new Rect(x,y,614,565),screen=="crafting"?"Crafting table":screen=="chest"?"Chest":screen=="furnace"?"Furnace":"Inventory");
-            if(screen=="chest")for(int i=0;i<27;i++)Slot(new Rect(x+32+i%9*60,y+63+i/9*59,55,55),chest,i,true);
+            Shade();bool craftingScreen=screen=="inventory"||screen=="crafting";
+            float sidebar=game.Player.IsCreative||craftingScreen&&recipeBookOpen?128*InventoryUnit:0;
+            InventoryPanelRect=new Rect((width-176*InventoryUnit-sidebar)/2+sidebar,(height-166*InventoryUnit)/2,176*InventoryUnit,166*InventoryUnit);
+            float x=InventoryPanelRect.x,y=InventoryPanelRect.y;var inventory=game.Player.Inventory;
+            PixelPanel(InventoryPanelRect);
+            if(screen=="chest")
+            {
+                InventoryLabel(7,5,"Chest");
+                for(int i=0;i<27;i++)Slot(PanelRect(7+i%9*18,17+i/9*18,18,18),chest,i,true);
+            }
             else if(screen=="furnace")
             {
+                InventoryLabel(66,5,"Furnace");
                 var slots=new[]{furnace.Input,furnace.Fuel,furnace.Output};
-                Slot(new Rect(x+195,y+70,55,55),slots,0,true,accepts:s=>Furnace.SmeltingResult(s.Id)>0,region:"furnace");
-                Slot(new Rect(x+195,y+160,55,55),slots,1,true,accepts:s=>Furnace.FuelSeconds(s.Id)>0,region:"furnace");
-                Slot(new Rect(x+362,y+115,55,55),slots,2,true,false,true,region:"furnace");
+                Slot(PanelRect(55,16,18,18),slots,0,true,accepts:s=>Furnace.SmeltingResult(s.Id)>0,region:"furnace");
+                Slot(PanelRect(55,52,18,18),slots,1,true,accepts:s=>Furnace.FuelSeconds(s.Id)>0,region:"furnace");
+                Slot(PanelRect(115,30,26,26),slots,2,true,false,true,region:"furnace");
                 furnace.Input=slots[0];furnace.Fuel=slots[1];furnace.Output=slots[2];
-                Label(new Rect(x+166,y+127,130,26),"Fuel",small,TextAnchor.MiddleCenter);Fill(new Rect(x+274,y+135,61,9),Ink);Fill(new Rect(x+274,y+135,61*furnace.CookProgress/Furnace.CookSeconds,9),Accent);
-                if(furnace.BurnTotal>0)Fill(new Rect(x+218,y+225,10,-60*furnace.BurnRemaining/furnace.BurnTotal),new Color(1,.54f,.17f));
+                DrawArrow(PanelRect(79,35,24,16),new Color(.40f,.40f,.40f));
+                GUI.BeginGroup(PanelRect(79,35,24*Mathf.Clamp01(furnace.CookProgress/Furnace.CookSeconds),16));DrawArrow(new Rect(0,0,24*InventoryUnit,16*InventoryUnit),Color.white);GUI.EndGroup();
+                Fill(PanelRect(58,37,11,11),new Color(.34f,.34f,.34f));
+                if(furnace.BurnTotal>0){float flame=Mathf.Clamp01(furnace.BurnRemaining/furnace.BurnTotal);Fill(PanelRect(58,48-11*flame,11,11*flame),new Color(1,.61f,.16f));Fill(PanelRect(61,45-6*flame,5,6*flame),new Color(1,.91f,.38f));}
             }
             else
             {
                 int size=screen=="crafting"?3:2;
                 if(size==2)
                 {
-                    for(int i=0;i<4;i++)Slot(new Rect(x+30,y+57+i*46,42,42),inventory.Armor,i,true,false,false,i);
-                    var offhand=new[]{inventory.Offhand};Slot(new Rect(x+95,y+193,49,49),offhand,0,true,region:"offhand");inventory.Offhand=offhand[0];
-                    Label(new Rect(x+90,y+75,155,98),"Equipment\n\nArmor on the left\nOffhand below",small);
+                    DrawAvatar(PanelRect(26,7,50,70));
+                    for(int i=0;i<4;i++)
+                    {
+                        Rect armorRect=PanelRect(7,7+i*18,18,18);Slot(armorRect,inventory.Armor,i,true,false,false,i);
+                        if(!ValidStack(inventory.Armor[i])){Color old=GUI.color;GUI.color=new Color(.38f,.38f,.38f,.55f);GUI.DrawTexture(Inset(armorRect,6),Icon(Items.IronHelmet+i));GUI.color=old;}
+                    }
+                    var offhand=new[]{inventory.Offhand};Slot(PanelRect(77,61,18,18),offhand,0,true,region:"offhand");inventory.Offhand=offhand[0];
+                    if(!ValidStack(inventory.Offhand)){Color old=GUI.color;GUI.color=new Color(.38f,.38f,.38f,.5f);GUI.DrawTexture(Inset(PanelRect(77,61,18,18),6),Icon(Items.Shield));GUI.color=old;}
                 }
-                float gx=size==3?x+175:x+292;
-                Label(new Rect(gx,y+54,200,22),size+" × "+size+" crafting",small);
-                for(int i=0;i<grid.Length;i++)Slot(new Rect(gx+i%size*57,y+85+i/size*57,52,52),grid,i,true);
-                Rect output=new Rect(gx+size*57+40,y+111,57,57);Fill(output,Ink);var result=Crafting.Preview(grid,size);if(result!=null)DrawStack(output,result);
-                Label(new Rect(gx+size*57+10,y+126,32,30),">",heading);
+                InventoryLabel(size==3?29:87,5,"Crafting");
+                for(int i=0;i<grid.Length;i++)Slot(CraftingSlotRect(i),grid,i,true);
+                CraftingOutputRect=PanelRect(size==3?123:143,size==3?30:34,26,26);
+                Rect output=CraftingOutputRect;SlotBackground(output);var result=Crafting.Preview(grid,size);if(result!=null)DrawStack(output,result);
+                DrawArrow(PanelRect(size==3?90:126,size==3?35:39,size==3?24:14,16),new Color(.4f,.4f,.4f));
                 if(output.Contains(Event.current.mousePosition)&&result!=null)
                 {
                     tooltip=Items.Name(result.Id);
-                    if(Event.current.type==EventType.MouseDown)
+                    Event e=Event.current;
+                    if(e.type==EventType.MouseDown&&e.button<=1)
                     {
-                        if(Event.current.shift){int maximum=0;while(maximum++<64&&Crafting.TryCraftInto(grid,size,inventory)){} }
+                        ClearTextFocus();
+                        if(e.shift){int maximum=0;while(maximum++<64&&Crafting.TryCraftInto(grid,size,inventory)){} }
                         else if(cursor==null || Inventory.Stackable(cursor,result)&&cursor.Count+result.Count<=Items.MaxStack(result.Id)){var crafted=Crafting.Craft(grid,size);if(cursor==null)cursor=crafted;else cursor.Count+=crafted.Count;}
-                        Event.current.Use();
+                        e.Use();
+                    }
+                    else if(!TextInputFocused&&e.type==EventType.KeyDown&&e.keyCode>=KeyCode.Alpha1&&e.keyCode<=KeyCode.Alpha9)
+                    {
+                        int index=e.keyCode-KeyCode.Alpha1;var destination=ValidStack(inventory.Slots[index])?inventory.Slots[index]:null;
+                        if(destination==null||Inventory.Stackable(destination,result)&&destination.Count+result.Count<=Items.MaxStack(result.Id))
+                        {var crafted=Crafting.Craft(grid,size);if(destination==null)inventory.Slots[index]=crafted;else destination.Count+=crafted.Count;}
+                        e.Use();
                     }
                 }
+                RecipeToggleRect=PanelRect(size==3?7:104,size==3?46:61,20,18);
+                if(PixelButton(RecipeToggleRect,"",recipeBookOpen)){recipeBookOpen=!recipeBookOpen;ClearTextFocus();}
+                DrawBook(Inset(RecipeToggleRect,9));
+                if(RecipeToggleRect.Contains(Event.current.mousePosition))tooltip=recipeBookOpen?"Hide recipe book":"Show recipe book";
             }
-            Label(new Rect(x+33,y+267,240,25),"Inventory",small);
-            for(int i=9;i<36;i++)Slot(new Rect(x+32+(i-9)%9*60,y+296+(i-9)/9*59,55,55),inventory.Slots,i,true);
-            for(int i=0;i<9;i++)Slot(new Rect(x+32+i*60,y+484,55,55),inventory.Slots,i,true,i==inventory.Selected);
-            Label(new Rect(x,y+574,614,26),"Left: move   Right: split/place one   Shift: transfer   1-9: swap   Esc: close",small,TextAnchor.MiddleCenter);
-            if(game.Player.IsCreative)CreativeCatalog(x-294,y);
-            else if(screen=="inventory"||screen=="crafting")RecipeBook(x-274,y);
-            if(Event.current.type==EventType.MouseDown && !new Rect(x,y,614,565).Contains(Event.current.mousePosition)&&Event.current.mousePosition.x>x+614&&cursor!=null)
-            {game.DropStack(game.Player.transform.position+game.Player.transform.forward+Vector3.up,cursor);cursor=null;Event.current.Use();}
+            if(screen!="inventory")InventoryLabel(7,74,"Inventory");
+            for(int i=9;i<36;i++)Slot(InventorySlotRect(i),inventory.Slots,i,true);
+            for(int i=0;i<9;i++)Slot(InventorySlotRect(i),inventory.Slots,i,true);
+            Label(new Rect(0,InventoryPanelRect.yMax+13,width,25),"Left: move / drag evenly   Right: split / drag one   Shift: transfer   1-9: swap",small,TextAnchor.MiddleCenter);
+            Label(new Rect(0,InventoryPanelRect.yMax+37,width,25),"Double-click: collect matching items   Q: drop one   Ctrl+Q: drop stack   E / Esc: close",small,TextAnchor.MiddleCenter);
+            if(game.Player.IsCreative)CreativeCatalog(x-128*InventoryUnit,y);
+            else if(craftingScreen&&recipeBookOpen)RecipeBook(x-128*InventoryUnit,y);
+            Rect combined=new Rect(x-sidebar,y,InventoryPanelRect.width+sidebar,InventoryPanelRect.height);
+            if(Event.current.type==EventType.MouseDown&&Event.current.button<=1&&!combined.Contains(Event.current.mousePosition)&&cursor!=null)
+            {
+                int amount=Event.current.button==1?1:cursor.Count;game.DropStack(game.Player.transform.position+game.Player.transform.forward+Vector3.up,new ItemStack(cursor.Id,amount,cursor.Durability));
+                cursor.Count-=amount;if(cursor.Empty)cursor=null;dragTargets.Clear();dragButton=-1;Event.current.Use();
+            }
         }
         private void CreativeCatalog(float x,float y)
         {
-            PanelBox(new Rect(x,y,276,565),"Creative items");search=TextField(new Rect(x+14,y+59,248,34),search,40,"CreativeSearch");
+            PixelPanel(new Rect(x,y,124*InventoryUnit,166*InventoryUnit));Label(new Rect(x+18,y+13,330,30),"Creative inventory",inventoryText);
+            search=TextField(new Rect(x+18,y+49,336,34),search,40,"CreativeSearch");
             var ids=Items.CreateCreativeInventory().Where(id=>Items.Name(id).IndexOf(search,StringComparison.OrdinalIgnoreCase)>=0).ToArray();
-            catalogScroll=GUI.BeginScrollView(new Rect(x+13,y+105,252,443),catalogScroll,new Rect(0,0,230,Mathf.CeilToInt(ids.Length/4f)*57));
+            catalogScroll=GUI.BeginScrollView(new Rect(x+18,y+96,339,383),catalogScroll,new Rect(0,0,318,Mathf.CeilToInt(ids.Length/5f)*63));
             for(int i=0;i<ids.Length;i++)
             {
-                Rect rect=new Rect(i%4*56,i/4*57,51,51);Fill(rect,Ink);DrawStack(rect,new ItemStack(ids[i]));
+                Rect rect=new Rect(i%5*63,i/5*63,57,57);SlotBackground(rect);DrawStack(rect,new ItemStack(ids[i]));
                 if(rect.Contains(Event.current.mousePosition))
                 {
                     tooltip=Items.Name(ids[i]);
-                    if(Event.current.type==EventType.MouseDown){ClearTextFocus();int count=Event.current.button==1?1:Items.MaxStack(ids[i]);ReturnStack(cursor);cursor=new ItemStack(ids[i],count);Event.current.Use();}
+                    if(Event.current.type==EventType.MouseDown&&Event.current.button<=1){ClearTextFocus();int count=Event.current.button==1?1:Items.MaxStack(ids[i]);ReturnStack(cursor);cursor=new ItemStack(ids[i],count);dragTargets.Clear();dragButton=-1;Event.current.Use();}
                 }
             }
             GUI.EndScrollView();
         }
         private void RecipeBook(float x,float y)
         {
-            if(x<4)return;PanelBox(new Rect(x,y,254,565),"Recipes");
-            recipesScroll=GUI.BeginScrollView(new Rect(x+10,y+59,235,488),recipesScroll,new Rect(0,0,211,Crafting.Recipes.Count*41));
-            int index=0;int size=screen=="crafting"?3:2;
-            foreach(var recipe in Crafting.Recipes)
+            PixelPanel(new Rect(x,y,124*InventoryUnit,166*InventoryUnit));Label(new Rect(x+18,y+13,300,30),"Recipe book",inventoryText);
+            recipeSearch=TextField(new Rect(x+18,y+49,336,34),recipeSearch,40,"RecipeSearch");
+            if(PixelButton(new Rect(x+18,y+92,336,32),craftableOnly?"Craftable recipes":"All recipes",craftableOnly))craftableOnly=!craftableOnly;
+            int size=screen=="crafting"?3:2;
+            var recipes=Crafting.Recipes.Where(r=>RecipeFits(r,size)&&r.Name.IndexOf(recipeSearch,StringComparison.OrdinalIgnoreCase)>=0&&(!craftableOnly||CanFillRecipe(r))).ToArray();
+            recipesScroll=GUI.BeginScrollView(new Rect(x+18,y+137,339,280),recipesScroll,new Rect(0,0,318,Mathf.CeilToInt(recipes.Length/5f)*63));
+            for(int index=0;index<recipes.Length;index++)
             {
-                bool fits=recipe.Shapeless?recipe.Pattern.Length<=grid.Length:recipe.Width<=size&&recipe.Height<=size;
-                bool can=fits&&recipe.Ingredients.All(p=>game.Player.Inventory.Count(p.Key)>=p.Value);
-                GUI.enabled=can;
-                if(Button(new Rect(0,index++*41,210,36),recipe.Name))
+                var recipe=recipes[index];bool can=CanFillRecipe(recipe);Rect rect=new Rect(index%5*63,index/5*63,57,57);
+                Fill(rect,can?new Color(.30f,.43f,.28f):new Color(.47f,.38f,.37f));SlotBackground(Inset(rect,3));
+                DrawStack(Inset(rect,3),new ItemStack(recipe.Output,recipe.Count));
+                if(rect.Contains(Event.current.mousePosition))
                 {
-                    foreach(var stack in grid)ReturnStack(stack);Array.Clear(grid,0,grid.Length);
-                    if(recipe.Ingredients.All(p=>game.Player.Inventory.Count(p.Key)>=p.Value))
-                        for(int i=0;i<recipe.Pattern.Length;i++)if(recipe.Pattern[i]!=0){int destination=recipe.Shapeless?i:i/recipe.Width*size+i%recipe.Width;game.Player.Inventory.Remove(recipe.Pattern[i],1);grid[destination]=new ItemStack(recipe.Pattern[i]);}
+                    tooltip=recipe.Name+(can?"":" (missing ingredients)");
+                    if(Event.current.type==EventType.MouseDown&&Event.current.button<=1)
+                    {ClearTextFocus();if(can)FillRecipe(recipe,size);else Notify("Needed: "+string.Join(", ",recipe.Ingredients.Select(p=>p.Value+" "+Items.Name(p.Key))));Event.current.Use();}
                 }
-                GUI.enabled=true;
             }
             GUI.EndScrollView();
+            Label(new Rect(x+18,y+430,336,52),recipes.Length==0?"No matching recipes.":"Select a recipe to place its ingredients. Take the result to craft.",inventorySmall);
+        }
+        private bool RecipeFits(Recipe recipe,int size)=>recipe.Shapeless?recipe.Pattern.Length<=size*size:recipe.Width<=size&&recipe.Height<=size;
+        private bool CanFillRecipe(Recipe recipe)=>recipe.Ingredients.All(p=>game.Player.Inventory.Count(p.Key)+grid.Where(s=>s!=null&&s.Id==p.Key).Sum(s=>s.Count)>=p.Value);
+        private void FillRecipe(Recipe recipe,int size)
+        {
+            if(!RecipeFits(recipe,size)||!CanFillRecipe(recipe))return;
+            var contents=grid.Where(s=>s!=null&&!s.Empty).Select(s=>s.Clone()).ToList();Array.Clear(grid,0,grid.Length);
+            for(int i=0;i<recipe.Pattern.Length;i++)
+            {
+                int id=recipe.Pattern[i];if(id==0)continue;
+                var available=contents.FirstOrDefault(s=>s.Id==id&&s.Count>0);
+                if(available!=null)available.Count--;else game.Player.Inventory.Remove(id,1);
+                int destination=recipe.Shapeless?i:i/recipe.Width*size+i%recipe.Width;grid[destination]=new ItemStack(id);
+            }
+            foreach(var stack in contents)ReturnStack(stack);
+            dragTargets.Clear();dragButton=-1;
         }
         private void Slot(Rect rect,ItemStack[] items,int index,bool interactive,bool selected=false,bool output=false,int armor=-1,Func<ItemStack,bool> accepts=null,string region=null)
         {
             if(items==null||index<0||index>=items.Length)return;
-            Fill(rect,selected?Accent:new Color(.24f,.30f,.30f,.96f));Fill(new Rect(rect.x+2,rect.y+2,rect.width-4,rect.height-4),Ink);
-            var stack=items[index];if(stack!=null&&!stack.Empty)DrawStack(rect,stack);
+            SlotBackground(rect,selected);
+            var stack=ValidStack(items[index])?items[index]:null;string key=(region??items.GetHashCode().ToString())+":"+index;
+            var shown=stack;
+            if(dragTargets.Any(t=>t.Key==key)&&cursor!=null)
+            {shown=stack?.Clone()??new ItemStack(cursor.Id,0,cursor.Durability);shown.Count+=InventoryTransfer.DistributionAmount(cursor,stack,dragTargets.Count,dragButton==1);}
+            if(shown!=null&&!shown.Empty)DrawStack(rect,shown);
             if(!interactive||!rect.Contains(Event.current.mousePosition))return;
-            Fill(new Rect(rect.x+2,rect.y+2,rect.width-4,rect.height-4),new Color(1,1,1,.06f));
+            Fill(Inset(rect,3),new Color(1,1,1,.19f));
             if(stack!=null)tooltip=Items.Name(stack.Id)+(Items.Durability(stack.Id)>0?"  "+stack.Durability+" / "+Items.Durability(stack.Id):"");
             Event e=Event.current;
             bool Accepts(ItemStack item)=>item==null||item.Empty||!output&&(armor<0||Items.ArmorSlot(item.Id)==armor)&&(accepts==null||accepts(item));
             if(!TextInputFocused&&e.type==EventType.KeyDown && e.keyCode>=KeyCode.Alpha1&&e.keyCode<=KeyCode.Alpha9)
             {
-                int hotbar=e.keyCode-KeyCode.Alpha1;var target=game.Player.Inventory.Slots[hotbar];
-                if(Accepts(target)){items[index]=target;game.Player.Inventory.Slots[hotbar]=stack;}e.Use();return;
+                int hotbar=e.keyCode-KeyCode.Alpha1;var target=ValidStack(game.Player.Inventory.Slots[hotbar])?game.Player.Inventory.Slots[hotbar]:null;
+                if(!ReferenceEquals(items,game.Player.Inventory.Slots)||index!=hotbar)
+                {InventoryTransfer.SwapHotbar(ref stack,ref target,output,Accepts);items[index]=stack;game.Player.Inventory.Slots[hotbar]=target;}
+                e.Use();return;
             }
-            bool dragging=e.type==EventType.MouseDrag&&cursor!=null&&dragButton>=0;
-            if(e.type!=EventType.MouseDown&&!dragging)return;
-            string key=(region??items.GetHashCode().ToString())+":"+index;
-            if(dragging&&!dragged.Add(key))return;
-            if(e.type==EventType.MouseDown){ClearTextFocus();dragButton=e.button;dragged.Clear();dragged.Add(key);}
-            if(e.shift&&stack!=null)
+            if(!TextInputFocused&&e.type==EventType.KeyDown&&e.keyCode==KeyCode.Q&&stack!=null)
             {
-                if(ReferenceEquals(items,game.Player.Inventory.Slots))
+                int amount=e.control?stack.Count:1;game.DropStack(game.Player.transform.position+game.Player.transform.forward+Vector3.up,new ItemStack(stack.Id,amount,stack.Durability));
+                stack.Count-=amount;if(stack.Empty)items[index]=null;e.Use();return;
+            }
+            if(e.type==EventType.MouseDrag&&dragButton>=0&&cursor!=null)
+            {
+                if(Accepts(cursor)&&!output&&InventoryTransfer.CanDistribute(cursor,stack))AddDragTarget(items,index,key,region);
+                e.Use();return;
+            }
+            if(e.type!=EventType.MouseDown||e.button>1)return;
+            ClearTextFocus();dragTargets.Clear();dragButton=-1;
+            if(e.clickCount>=2&&e.button==0&&cursor!=null&&Items.MaxStack(cursor.Id)>1)
+            {
+                CollectMatching(region=="furnace"?items:null);e.Use();return;
+            }
+            if(e.shift&&stack!=null)QuickMove(items,index);
+            else if(cursor!=null&&!output&&Accepts(cursor)&&InventoryTransfer.CanDistribute(cursor,stack))
+            {
+                dragButton=e.button;AddDragTarget(items,index,key,region);
+            }
+            else{InventoryTransfer.Click(ref cursor,ref stack,e.button==1,output,Accepts);items[index]=stack;}
+            if(items[index]!=null&&items[index].Empty)items[index]=null;e.Use();
+        }
+        private void AddDragTarget(ItemStack[] items,int index,string key,string region)
+        {
+            if(cursor==null||dragTargets.Count>=cursor.Count||dragTargets.Any(t=>t.Key==key))return;
+            var target=new SlotTarget{Key=key,Read=()=>items[index],Write=s=>items[index]=s};
+            if(region=="offhand"){target.Read=()=>game.Player.Inventory.Offhand;target.Write=s=>game.Player.Inventory.Offhand=s;}
+            else if(region=="furnace")
+            {
+                var active=furnace;
+                target.Read=()=>index==0?active.Input:index==1?active.Fuel:active.Output;
+                target.Write=s=>{if(index==0)active.Input=s;else if(index==1)active.Fuel=s;else active.Output=s;};
+            }
+            dragTargets.Add(target);
+        }
+        private void FinishDrag()
+        {
+            if(cursor!=null&&dragTargets.Count>0)
+            {
+                var slots=dragTargets.Select(t=>t.Read()).ToArray();InventoryTransfer.Distribute(ref cursor,slots,dragButton==1);
+                for(int i=0;i<slots.Length;i++)dragTargets[i].Write(slots[i]);
+            }
+            dragTargets.Clear();dragButton=-1;
+        }
+        private void QuickMove(ItemStack[] items,int index)
+        {
+            var stack=items[index];if(stack==null)return;
+            if(ReferenceEquals(items,game.Player.Inventory.Slots))
+            {
+                int equipment=Items.ArmorSlot(stack.Id);
+                if(chest!=null)stack.Count=AddTo(chest,stack);
+                else if(furnace!=null)
                 {
-                    int equipment=Items.ArmorSlot(stack.Id);
-                    if(chest!=null){int left=AddTo(chest,stack);stack.Count=left;}
-                    else if(furnace!=null)
-                    {
-                        bool smelt=Furnace.SmeltingResult(stack.Id)>0,fuel=Furnace.FuelSeconds(stack.Id)>0;
-                        if(smelt||fuel){var destination=smelt?new[]{furnace.Input}:new[]{furnace.Fuel};int left=AddTo(destination,stack);if(smelt)furnace.Input=destination[0];else furnace.Fuel=destination[0];stack.Count=left;}
-                        else game.Player.Inventory.QuickMove(index);
-                    }
-                    else if(equipment>=0&&game.Player.Inventory.Armor[equipment]==null){game.Player.Inventory.Armor[equipment]=stack;items[index]=null;}
+                    bool smelt=Furnace.SmeltingResult(stack.Id)>0,fuel=Furnace.FuelSeconds(stack.Id)>0;
+                    if(smelt||fuel){var destination=smelt?new[]{furnace.Input}:new[]{furnace.Fuel};int left=AddTo(destination,stack);if(smelt)furnace.Input=destination[0];else furnace.Fuel=destination[0];stack.Count=left;}
                     else game.Player.Inventory.QuickMove(index);
                 }
-                else{int left=game.Player.Inventory.Add(stack.Id,stack.Count,stack.Durability);stack.Count=left;}
+                else if(equipment>=0&&!ValidStack(game.Player.Inventory.Armor[equipment])){game.Player.Inventory.Armor[equipment]=stack;items[index]=null;}
+                else game.Player.Inventory.QuickMove(index);
             }
-            else if(cursor==null)
+            else stack.Count=game.Player.Inventory.Add(stack.Id,stack.Count,stack.Durability);
+            if(items[index]!=null&&items[index].Empty)items[index]=null;
+        }
+        private void CollectMatching(ItemStack[] activeFurnaceSlots=null)
+        {
+            void Collect(ItemStack[] source)
             {
-                if(stack!=null&&!stack.Empty){int take=e.button==1?(stack.Count+1)/2:stack.Count;cursor=new ItemStack(stack.Id,take,stack.Durability);stack.Count-=take;}
+                if(source==null)return;
+                for(int i=0;i<source.Length;i++)
+                {
+                    var stack=source[i];if(!Inventory.Stackable(cursor,stack))continue;
+                    int amount=Mathf.Min(stack.Count,Items.MaxStack(cursor.Id)-cursor.Count);cursor.Count+=amount;stack.Count-=amount;if(stack.Empty)source[i]=null;
+                }
             }
-            else if(output&&Inventory.Stackable(cursor,stack))
-            {
-                int amount=Mathf.Min(e.button==1?1:stack.Count,Items.MaxStack(cursor.Id)-cursor.Count);cursor.Count+=amount;stack.Count-=amount;
-            }
-            else if(Accepts(cursor))
-            {
-                int amount=e.button==1||dragging?1:cursor.Count;
-                if(stack==null||stack.Empty){items[index]=new ItemStack(cursor.Id,Mathf.Min(amount,Items.MaxStack(cursor.Id)),cursor.Durability);cursor.Count-=items[index].Count;}
-                else if(Inventory.Stackable(cursor,stack)){amount=Mathf.Min(amount,Items.MaxStack(stack.Id)-stack.Count);stack.Count+=amount;cursor.Count-=amount;}
-                else if(e.button==0&&!dragging){items[index]=cursor;cursor=stack;}
-            }
-            if(items[index]!=null&&items[index].Empty)items[index]=null;if(cursor!=null&&cursor.Empty)cursor=null;e.Use();
+            Collect(game.Player.Inventory.Slots);Collect(grid);Collect(chest);
+            if(furnace!=null){var slots=activeFurnaceSlots??new[]{furnace.Input,furnace.Fuel,furnace.Output};Collect(slots);furnace.Input=slots[0];furnace.Fuel=slots[1];furnace.Output=slots[2];}
         }
         private int AddTo(ItemStack[] destination,ItemStack source)
         {
@@ -405,38 +524,67 @@ namespace VoxelWilds
         }
         private void DrawStack(Rect rect,ItemStack stack)
         {
-            if(stack==null||stack.Empty)return;GUI.DrawTexture(new Rect(rect.x+5,rect.y+4,rect.width-10,rect.height-10),Icon(stack.Id),ScaleMode.ScaleToFit);
-            if(stack.Count>1)Label(new Rect(rect.x+1,rect.y+2,rect.width-6,rect.height-5),stack.Count.ToString(),number);
+            if(!ValidStack(stack))return;GUI.DrawTexture(Inset(rect,3),Icon(stack.Id),ScaleMode.ScaleToFit);
+            if(stack.Count>1)
+            {
+                Rect countRect=new Rect(rect.x+1,rect.y+2,rect.width-4,rect.height-3);var color=number.normal.textColor;number.normal.textColor=new Color(.1f,.1f,.1f);Label(new Rect(countRect.x+2,countRect.y+2,countRect.width,countRect.height),stack.Count.ToString(),number,TextAnchor.LowerRight);number.normal.textColor=Color.white;Label(countRect,stack.Count.ToString(),number,TextAnchor.LowerRight);number.normal.textColor=color;
+            }
             int maximum=Items.Durability(stack.Id);if(maximum>0&&stack.Durability<maximum){Fill(new Rect(rect.x+7,rect.yMax-7,rect.width-14,4),Color.black);Fill(new Rect(rect.x+7,rect.yMax-7,(rect.width-14)*Mathf.Clamp01(stack.Durability/(float)maximum),4),Color.Lerp(new Color(.9f,.2f,.15f),Accent,stack.Durability/(float)maximum));}
         }
         private Texture2D Icon(int id)
         {
-            if(icons.TryGetValue(id,out var cached))return cached;var tex=new Texture2D(24,24,TextureFormat.RGBA32,false){filterMode=FilterMode.Point};var pixels=new Color[576];
-            uint rgb=Blocks.ColorRgb(Items.PlaceBlock(id));Color c=new Color(((rgb>>16)&255)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f);
-            for(int y=0;y<24;y++)for(int x=0;x<24;x++)
-            {
-                Color pixel=Color.clear;
-                if(id<90)
-                {
-                    if(y>=5&&y<=16&&x>=3&&x<=20){pixel=c*(x<12?.67f:.84f);pixel.a=1;}
-                    if(y>=16&&y<=21&&Math.Abs(x-12)<=((23-y)*2)){pixel=c;pixel.a=1;}
-                    if((x+y)%7==0&&pixel.a>0)pixel*=.91f;
-                }
-                else if(Items.IsTool(id))
-                {
-                    if(Math.Abs(x-y)<2&&x>4&&x<18)pixel=new Color(.58f,.37f,.18f);
-                    if(Items.MiningTier(id)>0){if(y>=16&&y<=19&&x>=5&&x<=21||x>=19&&y>=11&&y<=18)pixel=id==Items.CrystalPickaxe?new Color(.3f,.88f,.85f):id==Items.WoodenPickaxe?new Color(.67f,.46f,.22f):new Color(.76f,.79f,.77f);}
-                    else if(x>10&&y>10&&Math.Abs(x-y)<3)pixel=new Color(.73f,.85f,.86f);
-                }
-                else if(id==Items.EmptyBucket||id==Items.WaterBucket||id==Items.LavaBucket)
-                {if(y>=4&&y<=17&&x>=5+(17-y)/5&&x<=19-(17-y)/5)pixel=(x<8||x>16||y<7)?new Color(.65f,.7f,.72f):id==Items.WaterBucket?new Color(.22f,.54f,.86f):id==Items.LavaBucket?new Color(1,.42f,.1f):new Color(.19f,.24f,.27f);}
-                else
-                {
-                    float dx=(x-12)/8f,dy=(y-12)/9f;if(dx*dx+dy*dy<1){pixel=Items.IsFood(id)?new Color(.78f,.43f,.22f):Items.SpawnMob(id)!=null?new Color(.47f,.62f,.45f):id==Items.EnderPearl||id==Items.EyeEnder?new Color(.18f,.66f,.62f):new Color(.77f,.78f,.65f);if((x*3+y*7+id)%11<3)pixel*=.64f;pixel.a=1;}
-                }
-                pixels[y*24+x]=pixel;
-            }
-            tex.SetPixels(pixels);tex.Apply();icons[id]=tex;return tex;
+            if(icons==null)icons=new ItemIconAtlas();return icons.Get(id);
+        }
+        private void OnDestroy(){icons?.Dispose();if(heart!=null)Destroy(heart);}
+        private static bool ValidStack(ItemStack stack)=>stack!=null&&!stack.Empty&&Items.Exists(stack.Id);
+        private Rect PanelRect(float x,float y,float w,float h)=>new Rect(InventoryPanelRect.x+x*InventoryUnit,InventoryPanelRect.y+y*InventoryUnit,w*InventoryUnit,h*InventoryUnit);
+        private static Rect Inset(Rect rect,float amount)=>new Rect(rect.x+amount,rect.y+amount,rect.width-2*amount,rect.height-2*amount);
+        private void InventoryLabel(float x,float y,string value)=>Label(PanelRect(x,y,160-x,10),value,inventoryText);
+        private void PixelPanel(Rect rect)
+        {
+            Fill(new Rect(rect.x+6,rect.y+6,rect.width,rect.height),new Color(0,0,0,.35f));
+            Fill(rect,new Color(.12f,.12f,.12f));Fill(Inset(rect,3),new Color(.34f,.34f,.34f));Fill(new Rect(rect.x+3,rect.y+3,rect.width-9,rect.height-9),new Color(.94f,.94f,.94f));Fill(Inset(rect,9),new Color(.77f,.77f,.77f));
+        }
+        private static void SlotBackground(Rect rect,bool selected=false)
+        {
+            Fill(rect,selected?Color.white:new Color(.94f,.94f,.94f));
+            Fill(new Rect(rect.x,rect.y,rect.width-3,rect.height-3),new Color(.23f,.23f,.23f));
+            Fill(Inset(rect,3),new Color(.55f,.55f,.55f));
+            if(selected){Fill(new Rect(rect.x-3,rect.y-3,rect.width+6,3),Color.white);Fill(new Rect(rect.x-3,rect.yMax,rect.width+6,3),Color.white);}
+        }
+        private bool PixelButton(Rect rect,string label,bool active=false)
+        {
+            bool hovered=rect.Contains(Event.current.mousePosition);Fill(rect,new Color(.18f,.18f,.18f));Fill(Inset(rect,3),new Color(.95f,.95f,.95f));Fill(new Rect(rect.x+6,rect.y+6,rect.width-9,rect.height-9),new Color(.38f,.38f,.38f));Fill(Inset(rect,6),active?new Color(.62f,.74f,.56f):hovered?new Color(.82f,.85f,.89f):new Color(.70f,.70f,.70f));
+            if(label.Length>0)Label(Inset(rect,3),label,inventorySmall,TextAnchor.MiddleCenter);
+            if(hovered&&Event.current.type==EventType.MouseDown&&Event.current.button==0){Event.current.Use();return true;}return false;
+        }
+        private static void DrawArrow(Rect rect,Color color)
+        {
+            Fill(new Rect(rect.x,rect.y+rect.height*.375f,rect.width*.65f,rect.height*.25f),color);
+            for(int i=0;i<5;i++){float h=rect.height*(1-i*.2f);Fill(new Rect(rect.x+rect.width*(.55f+i*.09f),rect.center.y-h/2,rect.width*.1f,h),color);}
+        }
+        private static void DrawBook(Rect rect)
+        {
+            Fill(rect,new Color(.19f,.29f,.16f));Fill(Inset(rect,3),new Color(.40f,.55f,.25f));Fill(new Rect(rect.x+6,rect.y+5,rect.width-11,rect.height-10),new Color(.91f,.89f,.68f));Fill(new Rect(rect.center.x-1.5f,rect.y+5,3,rect.height-10),new Color(.56f,.46f,.29f));
+        }
+        private void DrawAvatar(Rect rect)
+        {
+            Fill(rect,new Color(.13f,.13f,.13f));Fill(Inset(rect,3),new Color(.055f,.065f,.06f));
+            float unit=rect.width/50;Rect Part(float x,float y,float w,float h)=>new Rect(rect.x+x*unit,rect.y+y*unit,w*unit,h*unit);
+            Color skin=new Color(.69f,.45f,.30f),shirt=new Color(.20f,.49f,.43f),pants=new Color(.25f,.29f,.39f),hair=new Color(.22f,.15f,.11f),metal=new Color(.71f,.74f,.75f);
+            void Box(float x,float y,float w,float h,Color c){Fill(Part(x,y,w,h),c*.77f);Fill(Part(x,y,w-2,h-1),c);Fill(Part(x,y,w-2,1),Color.Lerp(c,Color.white,.18f));}
+            var armor=game.Player.Inventory.Armor;bool chestplate=ValidStack(armor[1]),leggings=ValidStack(armor[2]),boots=ValidStack(armor[3]);
+            Fill(Part(9,64,32,2),new Color(0,0,0,.5f));
+            Box(17,43,8,20,leggings?metal:pants);Box(26,43,8,20,leggings?metal:pants);
+            Box(17,59,8,5,boots?metal:new Color(.19f,.17f,.15f));Box(26,59,8,5,boots?metal:new Color(.19f,.17f,.15f));
+            Box(16,24,19,21,chestplate?metal:shirt);Box(9,25,7,24,skin);Box(35,25,7,24,skin);
+            Box(9,25,7,chestplate?19:10,chestplate?metal:shirt);Box(35,25,7,chestplate?19:10,chestplate?metal:shirt);
+            float look=Mathf.Clamp((Event.current.mousePosition.x-rect.center.x)/80,-2,2);look=Mathf.Round(look);
+            Box(18+look,9,16,16,skin);Fill(Part(18+look,8,16,5),hair);Fill(Part(18+look,12,3,6),hair);Fill(Part(31+look,12,3,6),hair);
+            Fill(Part(22+look,16,3,2),new Color(.91f,.9f,.83f));Fill(Part(28+look,16,3,2),new Color(.91f,.9f,.83f));Fill(Part(23+look,16,1,2),new Color(.20f,.30f,.25f));Fill(Part(29+look,16,1,2),new Color(.20f,.30f,.25f));Fill(Part(25+look,21,4,1),new Color(.37f,.22f,.17f));
+            if(ValidStack(armor[0])){Color helmet=armor[0].Id==Items.GoldHelmet?new Color(.88f,.66f,.22f):metal;Box(17+look,7,18,6,helmet);Fill(Part(17+look,12,3,8),helmet);Fill(Part(32+look,12,3,8),helmet*.77f);}
+            if(ValidStack(game.Player.Inventory.Held))GUI.DrawTexture(Part(33,39,14,18),Icon(game.Player.Inventory.Held.Id),ScaleMode.ScaleToFit);
+            if(ValidStack(game.Player.Inventory.Offhand))GUI.DrawTexture(Part(3,38,15,19),Icon(game.Player.Inventory.Offhand.Id),ScaleMode.ScaleToFit);
         }
         private void Shade()=>Fill(new Rect(0,0,width,height),new Color(.025f,.035f,.045f,.73f));
         private void PanelBox(Rect rect,string label){Fill(rect,Panel);Fill(new Rect(rect.x,rect.y,rect.width,3),Accent);Label(new Rect(rect.x+22,rect.y+18,rect.width-44,35),label,heading);}

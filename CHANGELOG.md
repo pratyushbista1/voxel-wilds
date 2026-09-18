@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.3
+
+- Replaced generic inventory symbols with original 32-pixel item art and textured block icons.
+- Rebuilt inventory and crafting panels with gray beveled slots, an avatar preview, armor and offhand slots, and a toggleable recipe book.
+- Added equal-share left dragging and one-item right dragging while preserving stack counts and equipment restrictions.
+- Tuned walking, forward sprinting, air control, braking, jump height, camera bob and sprint field-of-view transitions.
+- Added native inventory screenshots, click and drag checks, and movement regression tests.
+
 ## 2.0.2
 
 - Added a visible first-person arm and hand, smoother equip transitions, and repeating mining and attack swings.

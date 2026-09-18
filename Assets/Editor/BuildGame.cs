@@ -15,7 +15,7 @@ namespace VoxelWilds.Editor
     public static class BuildGame
     {
         public const string ScenePath = "Assets/Scenes/Main.unity";
-        public const string Version = "2.0.2";
+        public const string Version = "2.0.3";
 
         [MenuItem("Voxel Wilds/Configure project")]
         public static void Configure()

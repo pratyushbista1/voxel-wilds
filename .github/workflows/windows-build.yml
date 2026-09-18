@@ -31,11 +31,11 @@ jobs:
           targetPlatform: StandaloneWindows64
           buildMethod: VoxelWilds.Editor.BuildGame.BuildWindows
           versioning: Custom
-          version: 2.0.2
+          version: 2.0.3
           allowDirtyBuild: true
       - uses: actions/upload-artifact@v6
         with:
           name: Voxel-Wilds-Unity-Windows
-          path: release/2.0.2/Windows/
+          path: release/2.0.3/Windows/
           if-no-files-found: error
           retention-days: 14
