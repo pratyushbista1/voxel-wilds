@@ -41,7 +41,7 @@ namespace VoxelWilds
             }
             if(found)
             {
-                Vector3 target=bed?new Vector3(1,.55f,1):id==Block.Chest?new Vector3(.86f,.8f,.86f):id==Block.Lantern?new Vector3(.38f,.65f,.38f):new Vector3(.8f,.6f,.8f);
+                Vector3 target=bed?new Vector3(1,.5625f,1):id==Block.Chest?new Vector3(.86f,.8f,.86f):id==Block.Lantern?new Vector3(.38f,.65f,.38f):new Vector3(.8f,.6f,.8f);
                 Vector3 factor=new Vector3(target.x/Mathf.Max(.001f,bounds.size.x),target.y/Mathf.Max(.001f,bounds.size.y),target.z/Mathf.Max(.001f,bounds.size.z));
                 if(id==Block.Lantern||id==Block.Campfire)factor=Vector3.one*Mathf.Min(factor.x,Mathf.Min(factor.y,factor.z));
                 fitted.localScale=factor;

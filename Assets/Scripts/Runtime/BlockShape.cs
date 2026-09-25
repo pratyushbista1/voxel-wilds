@@ -8,6 +8,7 @@ namespace VoxelWilds
         public static Bounds Bounds(Cell cell, Voxel voxel)
         {
             Vector3 minimum = new Vector3(cell.X, cell.Y, cell.Z), size = Vector3.one;
+            if (Blocks.IsBed(voxel.Id)) size.y = BedRules.Height;
             if (voxel.Id == Block.Door)
             {
                 int edge = DoorRules.Edge(voxel);
@@ -28,7 +29,7 @@ namespace VoxelWilds
         public static bool BlocksRay(Cell cell, Voxel voxel, Ray ray, float distance)
         {
             if (!Blocks.IsSolid(voxel.Id)) return false;
-            return voxel.Id != Block.Door || Bounds(cell, voxel).IntersectRay(ray, out float hit) && hit <= distance;
+            return voxel.Id != Block.Door && !Blocks.IsBed(voxel.Id) || Bounds(cell, voxel).IntersectRay(ray, out float hit) && hit <= distance;
         }
     }
 }

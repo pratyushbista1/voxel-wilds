@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not $Visible) { throw 'Native inventory screenshots need a visible game window. Run this test with -Visible on an unlocked desktop.' }
 $voxelRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-if (-not $Player) { $Player = Join-Path $voxelRoot 'release/2.0.3/Windows/Voxel Wilds.exe' }
+if (-not $Player) { $Player = Join-Path $voxelRoot 'release/2.0.4/Windows/Voxel Wilds.exe' }
 $voxelPlayer = [IO.Path]::GetFullPath($Player)
 if (-not (Test-Path -LiteralPath $voxelPlayer -PathType Leaf)) { throw "Build the Windows player first: $voxelPlayer" }
 $voxelRun = 'unity-inventory-' + [Guid]::NewGuid().ToString('N')

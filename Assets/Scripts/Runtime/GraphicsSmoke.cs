@@ -99,6 +99,16 @@ namespace VoxelWilds
                 "The renderer owns the complete 256-pixel block texture atlas");
             Require(game.Renderer.Atlas.mipmapCount >= 4, "The block atlas includes isolated mip levels for distant terrain");
             Require(game.Renderer.TerrainMaterial.FindPass("ShadowCaster") >= 0, "Terrain includes its own alpha-tested shadow-caster pass");
+            Mesh portalX = game.Renderer.BlockPreview(Block.PortalX), portalZ = game.Renderer.BlockPreview(Block.PortalZ);
+            Require(portalX.vertexCount == 4 && portalX.bounds.size.z < .001f && Mathf.Abs(portalX.bounds.size.x - 1) < .001f,
+                "X-aligned portals render as a centered sheet, not a full block");
+            Require(portalZ.vertexCount == 4 && portalZ.bounds.size.x < .001f && Mathf.Abs(portalZ.bounds.size.z - 1) < .001f,
+                "Z-aligned portals render as a centered sheet, not a full block");
+            Require(Mathf.Abs(portalX.bounds.center.z) < .001f && Mathf.Abs(portalZ.bounds.center.x) < .001f,
+                "Both Nether portal sheets stay centered inside their obsidian frames");
+            Mesh endPortal = game.Renderer.BlockPreview(Block.EndPortal);
+            Require(endPortal.vertexCount == 4 && endPortal.bounds.size.y < .001f && Mathf.Abs(endPortal.bounds.center.y - .25f) < .001f,
+                "End portals render as a horizontal surface three quarters up their block");
             File.WriteAllBytes(Path.Combine(artifactDirectory, "00-block-atlas.png"), game.Renderer.Atlas.EncodeToPNG());
 
             stage = "High preset at midday";
@@ -193,7 +203,46 @@ namespace VoxelWilds
             Debug.Log("VOXEL_VISUAL_SHADOW_DELTA " + shadowDifference.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));
             Require(shadowDifference > .1f,
                 "Enabling shadows visibly darkens the same terrain compared with shadows disabled");
+            stage = "oriented portal surfaces";
+            BuildPortalFixture();
+            viewpoint = new Vector3(1, 35, 10);
+            game.Player.Teleport(viewpoint);
+            FacePoint(new Vector3(-5, 35, 21));
+            game.Renderer.EnsureImmediate(viewpoint);
+            yield return Capture("09-oriented-portals.png");
+            stage = "generated village buildings";
+            int villageFloor=VoxelWilds.Core.Terrain.Surface(game.World.Seed,Dimension.Overworld,40,40);
+            viewpoint=new Vector3(40,villageFloor+19,73);
+            game.Player.Teleport(viewpoint);
+            FacePoint(new Vector3(40,villageFloor+2,40));
+            game.Renderer.EnsureImmediate(new Vector3(40,villageFloor+2,40));
+            for(int frame=0;frame<60;frame++){game.Renderer.Tick(viewpoint,game.Settings.ViewDistance);yield return null;}
+            yield return Capture("10-village-overview.png");
+            viewpoint=new Vector3(29,villageFloor+1.08f,38);
+            game.Player.Teleport(viewpoint);
+            FacePoint(new Vector3(29,villageFloor+3,29));
+            game.Renderer.EnsureImmediate(viewpoint);
+            yield return Capture("11-village-cottage.png");
             Require(game.SaveWorld() && game.LastSaveError == null, "Graphics controls do not prevent normal world saving");
+        }
+
+        private void BuildPortalFixture()
+        {
+            for (int z = 10; z <= 27; z++)
+            for (int x = -9; x <= 0; x++)
+            for (int y = 33; y <= 43; y++) game.World.Set(new Cell(x, y, z), Block.Air);
+            foreach (bool alongX in new[] { true, false })
+            {
+                Cell origin = new Cell(-7, 33, alongX ? 24 : 16);
+                Cell side = alongX ? new Cell(1, 0, 0) : new Cell(0, 0, 1);
+                for (int y = 0; y < 5; y++)
+                for (int w = 0; w < 4; w++)
+                    if (y == 0 || y == 4 || w == 0 || w == 3)
+                        game.World.Set(origin + new Cell(side.X * w, y, side.Z * w), Block.Obsidian);
+                for (int y = 1; y < 4; y++)
+                for (int w = 1; w < 3; w++)
+                    game.World.Set(origin + new Cell(side.X * w, y, side.Z * w), alongX ? Block.PortalX : Block.PortalZ);
+            }
         }
 
         private void ApplyPreset(int preset)

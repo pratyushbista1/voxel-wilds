@@ -23,7 +23,7 @@ namespace VoxelWilds.Core
                 for (int rx = World.FloorDiv(cx * 16 - 80, 192); rx <= World.FloorDiv(cx * 16 + 64, 192); rx++)
                 {
                     int x = rx * 192 + 40, z = rz * 192 + 40;
-                    if (painter.Intersects(x - 31, z - 31, x + 31, z + 31))
+                    if (painter.Intersects(x - 50, z - 50, x + 50, z + 50))
                         Village(painter, seed, x, Terrain.Surface(seed, dimension, x, z), z);
                     int dx = rx * 192 + 16, dz = rz * 192 + 40;
                     if (painter.Intersects(dx - 5, dz - 5, dx + 5, dz + 5)) Dungeon(painter, dx, 25, dz);
@@ -46,29 +46,31 @@ namespace VoxelWilds.Core
 
         private static void Village(Painter p, int seed, int x, int y, int z)
         {
-            p.Box(x - 20, y - 5, z - 20, x + 20, y - 1, z + 20, Block.Dirt);
-            p.Box(x - 20, y, z - 20, x + 20, y, z + 20, Block.Grass);
-            p.Box(x - 20, y + 1, z - 20, x + 20, World.Height - 1, z + 20, Block.Air);
+            VillageGround(p, seed, x, y, z);
             p.Box(x - 20, y, z - 1, x + 20, y, z + 1, Block.Gravel);
-            p.Box(x - 1, y, z - 20, x + 1, y, z + 20, Block.Gravel);
-            for (int distance = 21; distance <= 31; distance++)
+            p.Box(x - 1, y, z - 20, x + 1, y, z + 6, Block.Gravel);
+            p.Box(x - 1, y, z - 16, x + 5, y, z - 15, Block.Gravel);
+            p.Box(x + 4, y, z - 16, x + 5, y, z - 7, Block.Gravel);
+            p.Box(x - 1, y, z - 8, x + 5, y, z - 7, Block.Gravel);
+            p.Box(x - 1, y, z + 5, x + 7, y, z + 6, Block.Gravel);
+            p.Box(x + 6, y, z + 5, x + 7, y, z + 21, Block.Gravel);
+            p.Box(x - 1, y, z + 20, x + 7, y, z + 21, Block.Gravel);
             for (int side = -1; side <= 1; side += 2)
             {
-                int offset = side * distance;
-                int hy = BlendApproach(y, Terrain.Surface(seed, Dimension.Overworld, x + offset, z), distance);
-                p.Box(x + offset, hy - 3, z - 1, x + offset, hy - 1, z + 1, Block.Dirt);
-                p.Box(x + offset, hy, z - 1, x + offset, hy, z + 1, Block.Gravel);
-                p.Box(x + offset, hy + 1, z - 1, x + offset, hy + 4, z + 1, Block.Air);
-                hy = BlendApproach(y, Terrain.Surface(seed, Dimension.Overworld, x, z + offset), distance);
-                p.Box(x - 1, hy - 3, z + offset, x + 1, hy - 1, z + offset, Block.Dirt);
-                p.Box(x - 1, hy, z + offset, x + 1, hy, z + offset, Block.Gravel);
-                p.Box(x - 1, hy + 1, z + offset, x + 1, hy + 4, z + offset, Block.Air);
+                VillageApproach(p, seed, x, y, z, side, 0);
+                VillageApproach(p, seed, x, y, z, 0, side);
+                int hx = x + side * 11, outer = x + side * 17;
+                p.Box(hx - 1, y, z - 6, hx + 1, y, z - 1, Block.Gravel);
+                p.Box(hx - 1, y, z + 14, hx + 1, y, z + 17, Block.Gravel);
+                p.Box(Math.Min(hx, outer) - 1, y, z + 16, Math.Max(hx, outer) + 1, y, z + 18, Block.Gravel);
+                p.Box(outer - 1, y, z + 1, outer + 1, y, z + 18, Block.Gravel);
             }
             p.Marker(x, y + 1, z, "village");
             House(p, x - 11, y, z - 10, false);
             House(p, x + 11, y, z - 10, true);
             House(p, x - 11, y, z + 10, true);
             House(p, x + 11, y, z + 10, false);
+            p.Box(x - 5, y, z + 7, x + 5, y, z + 19, Block.Log);
             p.Box(x - 4, y, z + 8, x + 4, y, z + 18, Block.Farmland);
             p.Box(x, y, z + 8, x, y, z + 18, Block.Water);
             for (int fx = -4; fx <= 4; fx++)
@@ -81,31 +83,127 @@ namespace VoxelWilds.Core
             for (int ix = -2; ix <= 2; ix += 4)
             for (int iz = -13; iz <= -9; iz += 4) p.Box(x + ix, y + 1, z + iz, x + ix, y + 3, z + iz, Block.Log);
             p.Box(x - 2, y + 4, z - 13, x + 2, y + 4, z - 9, Block.Planks);
+            p.Box(x - 1, y + 5, z - 12, x + 1, y + 5, z - 10, Block.Planks);
         }
-        private static int BlendApproach(int start, int end, int distance)
+        private static void VillageGround(Painter p, int seed, int x, int y, int z)
         {
-            int step = distance - 20;
-            return start + Math.Max(-step, Math.Min(step, (int)Math.Round((end - start) * step / 11.0)));
+            for (int dz = -24; dz <= 24; dz++)
+            for (int dx = -24; dx <= 24; dx++)
+            {
+                if (!p.Intersects(x + dx - 2, z + dz - 2, x + dx + 2, z + dz + 2)) continue;
+                int distance = Math.Min(RectDistance(dx, dz, -20, -1, 20, 1), RectDistance(dx, dz, -1, -20, 1, 20));
+                distance = Math.Min(distance, RectDistance(dx, dz, -5, 7, 5, 19));
+                distance = Math.Min(distance, RectDistance(dx, dz, -1, 5, 7, 6));
+                distance = Math.Min(distance, RectDistance(dx, dz, 6, 5, 7, 21));
+                distance = Math.Min(distance, RectDistance(dx, dz, -1, 20, 7, 21));
+                distance = Math.Min(distance, RectDistance(dx, dz, -3, -14, 3, -8));
+                distance = Math.Min(distance, RectDistance(dx, dz, -1, -16, 5, -15));
+                distance = Math.Min(distance, RectDistance(dx, dz, 4, -16, 5, -7));
+                distance = Math.Min(distance, RectDistance(dx, dz, -1, -8, 5, -7));
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    int hx = side * 11, outer = side * 17;
+                    distance = Math.Min(distance, RectDistance(dx, dz, hx - 4, -14, hx + 4, -6));
+                    distance = Math.Min(distance, RectDistance(dx, dz, hx - 4, 6, hx + 4, 14));
+                    distance = Math.Min(distance, RectDistance(dx, dz, hx - 1, -6, hx + 1, -1));
+                    distance = Math.Min(distance, RectDistance(dx, dz, hx - 1, 14, hx + 1, 17));
+                    distance = Math.Min(distance, RectDistance(dx, dz, Math.Min(hx, outer) - 1, 16, Math.Max(hx, outer) + 1, 18));
+                    distance = Math.Min(distance, RectDistance(dx, dz, outer - 1, 1, outer + 1, 18));
+                }
+                if (distance >= 4) continue;
+                int natural = Terrain.Surface(seed, Dimension.Overworld, x + dx, z + dz);
+                int height = y + (int)Math.Round((natural - y) * distance / 4.0);
+                GroundColumn(p, seed, x + dx, height, z + dz, natural, Block.Grass);
+            }
+        }
+        private static int RectDistance(int x, int z, int x1, int z1, int x2, int z2)
+        {
+            return Math.Max(0, Math.Max(Math.Max(x1 - x, x - x2), Math.Max(z1 - z, z - z2)));
+        }
+        private static void GroundColumn(Painter p, int seed, int x, int y, int z, int natural, Block top)
+        {
+            ClearGeneratedTree(p, seed, x, natural, z);
+            p.Box(x, Math.Min(natural, y) - 3, z, x, y - 1, z, Block.Dirt);
+            p.Put(x, y, z, top);
+            p.Box(x, y + 1, z, x, World.Height - 1, z, Block.Air);
+        }
+        private static void ClearGeneratedTree(Painter p, int seed, int x, int y, int z)
+        {
+            if (!p.Intersects(x - 2, z - 2, x + 2, z + 2) || y <= Terrain.SeaLevel + 1 || y > 48
+                || (x - 8) * (x - 8) + (z - 8) * (z - 8) < 26 * 26) return;
+            int gx = World.FloorDiv(x, 8), gz = World.FloorDiv(z, 8);
+            uint hash = Terrain.Hash(gx, 0, gz, seed + 99);
+            if (hash % 5 > 1 || x != gx * 8 + (int)(hash % 5) || z != gz * 8 + (int)((hash >> 5) % 5)) return;
+            int tall = 4 + (int)((hash >> 9) % 3);
+            p.ClearLeaves(x - 2, y + tall - 2, z - 2, x + 2, y + tall, z + 2);
+            p.ClearLeaves(x - 1, y + tall + 1, z, x + 1, y + tall + 1, z);
+            p.ClearLeaves(x, y + tall + 1, z - 1, x, y + tall + 1, z + 1);
+        }
+        private static void VillageApproach(Painter p, int seed, int x, int y, int z, int dx, int dz)
+        {
+            int height = y;
+            for (int distance = 21; distance <= 48; distance++)
+            {
+                int wx = x + dx * distance, wz = z + dz * distance;
+                int natural = Terrain.Surface(seed, Dimension.Overworld, wx, wz);
+                height += Math.Max(-1, Math.Min(1, natural - height));
+                for (int width = -1; width <= 1; width++)
+                {
+                    int px = wx + dz * width, pz = wz + dx * width;
+                    GroundColumn(p, seed, px, height, pz, Terrain.Surface(seed, Dimension.Overworld, px, pz), Block.Gravel);
+                }
+                if (distance >= 28 && height == natural) break;
+            }
         }
         private static void House(Painter p, int x, int y, int z, bool workshop)
         {
             p.Box(x - 3, y, z - 3, x + 3, y, z + 3, Block.Cobble);
-            p.Box(x - 3, y + 1, z - 3, x + 3, y + 4, z + 3, Block.Planks);
+            p.Box(x - 2, y, z - 2, x + 2, y, z + 2, Block.Planks);
+            p.Box(x - 3, y + 1, z - 3, x + 3, y + 3, z + 3, Block.Planks);
+            p.Box(x - 3, y + 1, z - 3, x + 3, y + 1, z + 3, Block.Cobble);
             p.Box(x - 2, y + 1, z - 2, x + 2, y + 3, z + 2, Block.Air);
-            p.Box(x - 4, y + 5, z - 4, x + 4, y + 5, z + 4, Block.Log);
-            p.Box(x - 3, y + 6, z - 2, x + 3, y + 6, z + 2, Block.Planks);
-            p.Box(x - 3, y + 7, z, x + 3, y + 7, z, Block.Planks);
+            foreach (int cornerX in new[] { -3, 3 })
+            foreach (int cornerZ in new[] { -3, 3 })
+                p.Box(x + cornerX, y + 1, z + cornerZ, x + cornerX, y + 3, z + cornerZ, Block.Log);
+            for (int across = -4; across <= 4; across++)
+            {
+                int roof = y + 4 + Math.Max(0, 3 - Math.Abs(across));
+                if (workshop)
+                {
+                    p.Box(x - 4, roof, z + across, x + 4, roof, z + across, Block.Planks);
+                    if (Math.Abs(across) <= 3)
+                    {
+                        p.Box(x - 3, y + 4, z + across, x - 3, roof - 1, z + across, Block.Planks);
+                        p.Box(x + 3, y + 4, z + across, x + 3, roof - 1, z + across, Block.Planks);
+                    }
+                }
+                else
+                {
+                    p.Box(x + across, roof, z - 4, x + across, roof, z + 4, Block.Planks);
+                    if (Math.Abs(across) <= 3)
+                    {
+                        p.Box(x + across, y + 4, z - 3, x + across, roof - 1, z - 3, Block.Planks);
+                        p.Box(x + across, y + 4, z + 3, x + across, roof - 1, z + 3, Block.Planks);
+                    }
+                }
+            }
             p.Box(x, y + 1, z + 2, x, y + 2, z + 3, Block.Air);
             p.PutDoor(x, y + 1, z + 3, 2);
-            p.Put(x - 3, y + 2, z, Block.Glass); p.Put(x + 3, y + 2, z, Block.Glass);
-            p.Put(x, y + 2, z - 3, Block.Glass);
+            p.Box(x - 3, y + 2, z - 1, x - 3, y + 2, z + 1, Block.Glass);
+            p.Box(x + 3, y + 2, z - 1, x + 3, y + 2, z + 1, Block.Glass);
+            p.Box(x - 1, y + 2, z - 3, x + 1, y + 2, z - 3, Block.Glass);
+            p.Put(x - 2, y + 2, z + 3, Block.Glass);
             p.Put(x - 2, y + 1, z - 2, Block.Bed); p.Put(x - 2, y + 1, z - 1, Block.BedHead);
             p.Put(x + 2, y + 1, z - 2, workshop ? Block.Workbench : Block.Chest);
             if (!workshop) p.Marker(x + 2, y + 1, z - 2, "chest", "village");
-            if (workshop) p.Put(x + 2, y + 1, z - 1, Block.Furnace);
-            p.Put(x + 1, y + 3, z + 2, Block.Torch);
+            if (workshop)
+            {
+                p.Put(x + 2, y + 1, z - 1, Block.Furnace);
+                p.Box(x + 2, y + 2, z - 1, x + 2, y + 8, z - 1, Block.Bricks);
+            }
+            else p.Put(x, y + 5, z + 3, Block.Glass);
+            p.Put(x + 2, y + 2, z - 2, Block.Torch);
             p.Marker(x, y + 1, z, "mob", "villager");
-            p.Box(x - 1, y, z + 4, x + 1, y, z + 9, Block.Gravel);
         }
         private static void Dungeon(Painter p, int x, int y, int z)
         {
@@ -228,6 +326,16 @@ namespace VoxelWilds.Core
                 for (int z = Math.Max(z1, minZ); z <= Math.Min(z2, minZ + 15); z++)
                 for (int x = Math.Max(x1, minX); x <= Math.Min(x2, minX + 15); x++)
                 for (int y = Math.Max(0, y1); y <= Math.Min(World.Height - 1, y2); y++) data[World.Index(x - minX, y, z - minZ)] = new Voxel(id);
+            }
+            public void ClearLeaves(int x1, int y1, int z1, int x2, int y2, int z2)
+            {
+                for (int z = Math.Max(z1, minZ); z <= Math.Min(z2, minZ + 15); z++)
+                for (int x = Math.Max(x1, minX); x <= Math.Min(x2, minX + 15); x++)
+                for (int y = Math.Max(0, y1); y <= Math.Min(World.Height - 1, y2); y++)
+                {
+                    int index = World.Index(x - minX, y, z - minZ);
+                    if (data[index].Id == Block.Leaves) data[index] = new Voxel(Block.Air);
+                }
             }
             public void Marker(int x, int y, int z, string kind, string mob = "")
             {

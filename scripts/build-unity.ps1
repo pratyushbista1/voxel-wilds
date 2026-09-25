@@ -15,7 +15,7 @@ $voxelCandidates = @(
 $voxelEditor = $voxelCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
 if (-not $voxelEditor) { throw "Unity $voxelVersion is required. Set UNITY_EDITOR_PATH to Editor/Unity.exe or pass -UnityEditor." }
 $voxelEditor = [IO.Path]::GetFullPath($voxelEditor)
-$voxelRelease = Join-Path $voxelRoot 'release/2.0.3'
+$voxelRelease = Join-Path $voxelRoot 'release/2.0.4'
 $voxelOutput = Join-Path $voxelRelease 'Windows'
 $voxelLogs = Join-Path $voxelRoot 'artifacts'
 New-Item -ItemType Directory -Path $voxelOutput, $voxelLogs -Force | Out-Null

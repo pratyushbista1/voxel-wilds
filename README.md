@@ -6,11 +6,11 @@ Models are original, editable Blender assets.
 
 ## Play on Windows
 
-Extract `Voxel-Wilds-Unity-Portable-2.0.3.zip` into a new folder, then run `Voxel Wilds.exe`.
+Extract `Voxel-Wilds-Unity-Portable-2.0.4.zip` into a new folder, then run `Voxel Wilds.exe`.
 Keep the executable, `Voxel Wilds_Data`, `UnityPlayer.dll` and the other packaged
 files together. The executable alone is not a portable game.
 
-The setup edition is `Voxel-Wilds-Unity-Setup-2.0.3.exe`. It installs a Start menu
+The setup edition is `Voxel-Wilds-Unity-Setup-2.0.4.exe`. It installs a Start menu
 shortcut and an uninstaller. Builds are unsigned, so Windows may show a publisher
 warning. Check the download against `UNITY-PACKAGES-SHA256.txt` before sharing it.
 The installed edition saves to `%APPDATA%/VoxelWildsUnity/saves/` when launched
@@ -48,11 +48,18 @@ player after three seconds. There are no respawn or teleport-to-spawn buttons.
 
 ## Worlds and survival
 
+New Survival worlds begin with an empty inventory, armor slots and offhand. Gather
+wood by hand, craft planks, then make a crafting table and tools. Creative also
+starts with an empty hotbar; choose items from its inventory catalog. Existing
+world inventories are preserved, including items granted by earlier versions.
+
 Worlds are seeded and generated in 16-block chunks. Terrain includes caves, ores,
 trees, rivers, villages, village chests and underground dungeons. A village is
 available near X 40, Z 40 in every seed. Villagers wander and flee nearby threats.
 
 Village houses have wooden doors. Right-click either half to open or close a door.
+Houses now have pitched roofs, timber corners, windows and supported foundations.
+Gravel paths connect every doorway and avoid the well and farm irrigation.
 Crafted doors occupy two blocks and need a solid floor; breaking either half removes
 the pair and drops one door in Survival. Door orientation and open state are saved.
 
@@ -66,7 +73,8 @@ and endermen inhabit the world. Endermen normally leave you alone until stared a
 or attacked; they teleport to dry, clear ground and take damage from water.
 Skeletons shoot arrows, creepers explode and undead burn in sunlight.
 
-Place a bed on two supported blocks. Using it sets the respawn point. At night,
+Place a bed on two supported blocks. Beds face the direction you are looking;
+breaking either half removes its matching partner. Using a complete bed sets the respawn point. At night,
 sleeping with no nearby hostile mobs advances time to dawn. A missing bed falls
 back to world spawn. Beds explode outside the Overworld.
 
@@ -110,10 +118,19 @@ all plant/fluid interactions are not implemented.
 
 ## Dimensions, spawners and the dragon
 
-Build an obsidian frame four blocks wide and five blocks high, with a clear 2x3
-opening. The corners are optional. Ignite it with flint and steel. Standing in the
-portal transfers between the Overworld and Nether using an 8:1 coordinate scale.
+Build a vertical rectangular obsidian frame with a clear opening from 2x3 through
+21x21 blocks (outer dimensions 4x5 through 23x23). The corners are optional, and
+either horizontal axis works. Use flint and steel on an inside face to ignite it.
+Breaking a required edge or placing a block or fluid inside extinguishes the portal.
+The purple surface is a thin sheet, not a solid block. Touching it transfers between
+the Overworld and Nether after four seconds in Survival, using an 8:1 coordinate scale.
+Travel reuses a nearby valid destination portal or creates a supported return frame.
+After arriving, leave the portal before entering again to travel back.
 Each dimension retains its own edits, containers, dropped items and mobs.
+
+The frame reference is [Minecraft's portal guide](https://www.minecraft.net/en-us/article/jazz-up-your-nether-portal).
+Fire-based ignition, entity transport and exact parity with every portal-linking
+edge case are not implemented.
 
 The Nether contains lava, fortress bridges, bastions, treasure, blazes, piglins,
 brutes and wither skeletons. Mob spawners work while the player is within sixteen
@@ -153,11 +170,16 @@ when airborne or blocked, and jumping is always manual.
 
 ## Graphics
 
-The 2.0.1 renderer keeps the blocky world and original pixel art while aiming for a
+The renderer keeps the blocky world and original pixel art while aiming for a
 Minecraft-style shader-pack look. Blocks have distinct face textures, cast and
 receive sunlight shadows, and use adjustable corner shading. Grass tufts and
 crossed plant meshes add detail. Placed chests, beds, lanterns and campfires use the
 original Blender models, and nearby light-emitting blocks illuminate their surroundings.
+
+Version 2.0.4 uses calmer stone and foliage textures, natural greens, blue water
+and neutral highlight compression. Block drops use textured meshes; tools and
+food drops use their item artwork. Item names now show diamond rather than crystal
+and sweet berries rather than wild berries, without changing saved item IDs.
 
 The sky changes through dawn, daylight, sunset and starry nights. Water has animated
 surface ripples, sun highlights and sky-color reflections. High and Ultra presets

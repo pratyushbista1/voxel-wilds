@@ -139,10 +139,14 @@ namespace VoxelWilds
                 }
                 bool liquid=Blocks.IsFluid(id),portal=id==Block.PortalX||id==Block.PortalZ||id==Block.EndPortal;
                 var builder=liquid||portal?fluid:solid;
+                if(portal)
+                {
+                    fluid.Portal(new Vector3(x,y,z),id);
+                    continue;
+                }
                 float height=liquid?(voxel.Level==8||Blocks.IsFluid(world.GetBlock(p.Up))?1:1-(voxel.Level+1)/9f):1;
-                if(Blocks.IsBed(id))height=.55f;
+                if(Blocks.IsBed(id))height=.5625f;
                 if(id==Block.Farmland)height=.9375f;
-                if(id==Block.EndPortal)height=.1f;
                 bool decoration=VoxelDecorations.Supports(id);
                 if(decoration)
                 {
@@ -156,12 +160,12 @@ namespace VoxelWilds
                 }
                 if(id==Block.Crop||id==Block.NetherWart){solid.Cross(new Vector3(x,y,z),id,id==Block.Crop?.85f:.55f,false);continue;}
                 if(Emission(id)>0&&(id!=Block.Lava||world.GetBlock(p.Up)==Block.Air)&&(id!=Block.Lava||VoxelWilds.Core.Terrain.Hash(p.X,p.Y,p.Z,71)%19==0))view.Glows.Add(new Glow{Position=new Vector3(p.X+.5f,p.Y+.7f,p.Z+.5f),Id=id});
-                if(id==Block.Grass&&world.GetBlock(p.Up)==Block.Air&&VoxelWilds.Core.Terrain.Hash(p.X,p.Y,p.Z,41)%9==0)solid.Cross(new Vector3(x,y+1,z),id,.24f,true);
+                if(id==Block.Grass&&world.GetBlock(p.Up)==Block.Air&&VoxelWilds.Core.Terrain.Hash(p.X,p.Y,p.Z,41)%17==0)solid.Cross(new Vector3(x,y+1,z),id,.62f,true);
                 for(int face=0;face<6;face++)
                 {
                     var offset=new Cell((int)normals[face].x,(int)normals[face].y,(int)normals[face].z);
                     Block neighbor=world.GetBlock(p+offset);
-                    if(neighbor==id && (liquid||id==Block.Glass||portal))continue;
+                    if(neighbor==id && (liquid||id==Block.Glass||id==Block.Leaves))continue;
                     if(Blocks.IsSolid(neighbor)&&!Blocks.IsTransparent(neighbor)&&!(face==2 && height<1))continue;
                     if(!decoration)builder.Face(new Vector3(x,y,z),corners[face],normals[face],id,face,height,liquid||portal?Vector4.one:CornerShade(p,face));
                     if(Blocks.IsSolid(id))collision.Face(new Vector3(x,y,z),corners[face],normals[face],id,face,height,Vector4.one);
@@ -206,7 +210,9 @@ namespace VoxelWilds
         public Mesh BlockPreview(Block id)
         {
             if(previews.TryGetValue(id,out var mesh))return mesh;
-            var builder=new MeshBuilder();for(int face=0;face<6;face++)builder.Face(-Vector3.one*.5f,corners[face],normals[face],id,face,1,Vector4.one);
+            var builder=new MeshBuilder();
+            if(id==Block.PortalX||id==Block.PortalZ||id==Block.EndPortal)builder.Portal(-Vector3.one*.5f,id);
+            else for(int face=0;face<6;face++)builder.Face(-Vector3.one*.5f,corners[face],normals[face],id,face,1,Vector4.one);
             mesh=builder.Mesh("Held "+id);previews.Add(id,mesh);return mesh;
         }
         private sealed class MeshBuilder
@@ -219,10 +225,16 @@ namespace VoxelWilds
                 for(int i=0;i<4;i++)
                 {
                     var p=points[i];float u=face<2?p.z:p.x,v=face==2||face==3?p.z:p.y;
-                    p.y*=height;vertices.Add(origin+p);normals.Add(normal);colors.Add(new Color(shade[i],shade[i],shade[i],1));uvs.Add(BlockTextureAtlas.Uv(id,face,u,v));surfaces.Add(new Vector2(Emission(id),id==Block.Lava?1:id==Block.PortalX||id==Block.PortalZ||id==Block.EndPortal?2:0));
+                    p.y*=height;vertices.Add(origin+p);normals.Add(normal);colors.Add(new Color(shade[i],shade[i],shade[i],1));uvs.Add(BlockTextureAtlas.Uv(id,face,u,v));surfaces.Add(new Vector2(Emission(id),id==Block.Lava?1:id==Block.EndPortal?3:id==Block.PortalX||id==Block.PortalZ?2:0));
                 }
                 if(shade.x+shade.z>shade.y+shade.w){indices.Add(start);indices.Add(start+1);indices.Add(start+3);indices.Add(start+1);indices.Add(start+2);indices.Add(start+3);}
                 else{indices.Add(start);indices.Add(start+1);indices.Add(start+2);indices.Add(start);indices.Add(start+2);indices.Add(start+3);}
+            }
+            public void Portal(Vector3 origin,Block id)
+            {
+                int face=id==Block.PortalX?5:id==Block.PortalZ?0:2;
+                Vector3 shift=id==Block.PortalX?new Vector3(0,0,.5f):id==Block.PortalZ?new Vector3(-.5f,0,0):new Vector3(0,-.25f,0);
+                Face(origin+shift,corners[face],WorldRenderer.normals[face],id,face,1,Vector4.one);
             }
             public void Cross(Vector3 origin,Block id,float height,bool grass)
             {

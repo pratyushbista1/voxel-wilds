@@ -168,7 +168,7 @@ namespace VoxelWilds
             }
             if(Button(new Rect(left,621,155,43),"Settings")){previousScreen="title";screen="settings";}
             if(Button(new Rect(left+170,621,130,43),"Quit"))Application.Quit();
-            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.3",small,TextAnchor.MiddleRight);
+            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.4",small,TextAnchor.MiddleRight);
         }
         private void Hud()
         {

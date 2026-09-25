@@ -76,6 +76,11 @@ namespace VoxelWilds.Core
             chunks[key][Index(p.X - key.X * ChunkSize, p.Y, p.Z - key.Z * ChunkSize)] = value;
             StoreEdit(p, value);
             Changed?.Invoke(p);
+            if (Blocks.IsBed(previous.Id) && id != previous.Id)
+            {
+                Cell partner = BedRules.Partner(p, previous.Id);
+                if (BedRules.Paired(previous.Id, GetBlock(partner))) Set(partner, Block.Air);
+            }
             if (previous.Id == Block.Door && id != Block.Door)
             {
                 Cell partner = DoorRules.Partner(p, previous);

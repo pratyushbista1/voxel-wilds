@@ -73,9 +73,9 @@ namespace VoxelWilds
                 blockPixels = atlas.GetPixels32();
                 Release(atlas);
             }
-            Face(p, block, 0, 3, top, 13, 7, 0, depth, .76f);
-            Face(p, block, 5, 16, top + 7, 13, -7, 0, depth, .93f);
-            Face(p, block, 2, 16, top - 7, 13, 7, -13, 7, 1.12f);
+            Face(p, block, 0, 3, top, 13, 7, 0, depth, .72f);
+            Face(p, block, 5, 16, top + 7, 13, -7, 0, depth, .87f);
+            Face(p, block, 2, 16, top - 7, 13, 7, -13, 7, 1f);
         }
 
         private void Face(Sprite p, Block block, int face, float ox, float oy, float ax, float ay, float bx, float by, float light)
@@ -175,11 +175,11 @@ namespace VoxelWilds
 
         private static void Pickaxe(Sprite p, uint face, uint shine, uint dark)
         {
-            Handle(p, 7, 25, 20, 12);
-            p.Poly(dark, 6,7, 11,4, 20,5, 26,10, 28,17, 26,20, 24,13, 19,9, 10,9, 6,11);
-            p.Poly(face, 7,7, 11,5, 20,6, 25,10, 27,16, 25,15, 22,11, 18,8, 10,8, 7,10);
-            p.Line(10,5,19,6,1,shine); p.Line(20,7,24,10,1,shine);
-            p.Rect(17,9,3,3,0x896333);
+            Handle(p, 6, 26, 21, 11);
+            p.Poly(dark, 7,4, 17,4, 27,14, 27,24, 23,20, 23,15, 16,8, 11,8);
+            p.Poly(face, 8,4, 16,4, 26,14, 26,21, 24,19, 24,14, 16,6, 10,6);
+            p.Line(9,4,16,4,1,shine); p.Line(17,5,25,13,1,shine);
+            p.Rect(18,10,3,3,0x896333);
         }
 
         private static void Sword(Sprite p, uint face, uint shine, uint dark)

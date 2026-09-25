@@ -22,7 +22,7 @@ namespace VoxelWilds.Core
         public static bool IsSolid(Block id) => id != Block.Air && !IsFluid(id) && id != Block.Torch && id != Block.Lantern && id != Block.Campfire && id != Block.PortalX && id != Block.PortalZ && id != Block.NetherWart && id != Block.Crop && id != Block.EndPortal;
         public static bool IsTransparent(Block id) => !IsSolid(id) || id == Block.Glass || id == Block.Leaves || id == Block.Chest || id == Block.Spawner || IsBed(id) || id == Block.Door;
         public static bool IsBed(Block id) => id >= Block.Bed && id <= Block.BedWestHead;
-        public static bool IsReplaceable(Block id) => id == Block.Air || IsFluid(id) || id == Block.Crop || id == Block.NetherWart || id == Block.Torch || id == Block.Lantern || id == Block.Campfire;
+        public static bool IsReplaceable(Block id) => id == Block.Air || IsFluid(id) || id == Block.PortalX || id == Block.PortalZ || id == Block.Crop || id == Block.NetherWart || id == Block.Torch || id == Block.Lantern || id == Block.Campfire;
         public static uint ColorRgb(Block id)
         {
             if (IsBed(id)) return 0xb93f43;
@@ -59,7 +59,7 @@ namespace VoxelWilds.Core
             {
                 case Block.Workbench: return "Crafting table"; case Block.Cobble: return "Cobblestone";
                 case Block.CoalOre: return "Coal ore"; case Block.IronOre: return "Iron ore";
-                case Block.CrystalOre: return "Crystal ore"; case Block.NetherBricks: return "Nether bricks";
+                case Block.CrystalOre: return "Diamond ore"; case Block.NetherBricks: return "Nether bricks";
                 case Block.NetherGold: return "Nether gold ore"; case Block.NetherWart: return "Nether wart";
                 case Block.EndStone: return "End stone"; case Block.EndPortal: return "End portal";
                 case Block.EndFrame: return "End portal frame"; case Block.PortalX: case Block.PortalZ: return "Nether portal";

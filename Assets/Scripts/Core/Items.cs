@@ -42,11 +42,11 @@ namespace VoxelWilds.Core
         static readonly string[] MobNames = { "zombie", "cow", "pig", "sheep", "chicken", "blaze", "piglin", "skeleton", "creeper", "spider", "brute", "wither_skeleton", "enderman", "dragon", "villager" };
         static readonly Dictionary<int, string> Names = new Dictionary<int, string>
         {
-            [Stick] = "Stick", [Coal] = "Coal", [IronIngot] = "Iron ingot", [Berries] = "Wild berries",
-            [Crystal] = "Crystal", [RawIron] = "Raw iron", [ClayBall] = "Clay ball", [Brick] = "Brick",
+            [Stick] = "Stick", [Coal] = "Coal", [IronIngot] = "Iron ingot", [Berries] = "Sweet berries",
+            [Crystal] = "Diamond", [RawIron] = "Raw iron", [ClayBall] = "Clay ball", [Brick] = "Brick",
             [IronNugget] = "Iron nugget", [String] = "String", [WoodenPickaxe] = "Wooden pickaxe",
             [StonePickaxe] = "Stone pickaxe", [IronPickaxe] = "Iron pickaxe", [IronSword] = "Iron sword",
-            [CrystalPickaxe] = "Crystal pickaxe", [IronHelmet] = "Iron helmet", [IronChestplate] = "Iron chestplate",
+            [CrystalPickaxe] = "Diamond pickaxe", [IronHelmet] = "Iron helmet", [IronChestplate] = "Iron chestplate",
             [IronLeggings] = "Iron leggings", [IronBoots] = "Iron boots", [Shield] = "Shield",
             [RawMutton] = "Raw mutton", [CookedMutton] = "Cooked mutton", [RawBeef] = "Raw beef", [Steak] = "Steak",
             [RawPorkchop] = "Raw porkchop", [CookedPorkchop] = "Cooked porkchop", [RawChicken] = "Raw chicken",
@@ -56,7 +56,7 @@ namespace VoxelWilds.Core
             [NetherBrick] = "Nether brick", [GoldHelmet] = "Golden helmet", [EmptyBucket] = "Bucket",
             [WaterBucket] = "Water bucket", [LavaBucket] = "Lava bucket", [Bow] = "Bow", [Arrow] = "Arrow",
             [EnderPearl] = "Ender pearl", [EyeEnder] = "Eye of ender", [BlazePowder] = "Blaze powder",
-            [Wheat] = "Wheat", [Bread] = "Bread", [Seeds] = "Wheat seeds", [CrystalSword] = "Crystal sword",
+            [Wheat] = "Wheat", [Bread] = "Bread", [Seeds] = "Wheat seeds", [CrystalSword] = "Diamond sword",
             [IronAxe] = "Iron axe", [IronShovel] = "Iron shovel", [IronHoe] = "Iron hoe", [Apple] = "Apple"
         };
 

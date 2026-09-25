@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.4
+
+- Removed free starter food, logs and tools from new worlds while preserving existing inventories.
+- Added variable-size Nether portals, thin oriented surfaces, frame validation and existing-portal reuse on return trips.
+- Rebuilt village rooflines, windows, foundations and connected paths without changing saved block IDs.
+- Rebalanced grass, stone, foliage, water, item icons and lighting with original artwork.
+- Added directional two-part beds and matching surface bounds.
+- Fixed held-food interaction priority, interrupted item-use state and wear on unrelated equipment.
+- Replaced generic dropped-item cubes with textured blocks and item sprites, and prevented low-frame-rate floor tunneling.
+- Added first-day progression, portal, bed, structure and dropped-item regression checks.
+
 ## 2.0.3
 
 - Replaced generic inventory symbols with original 32-pixel item art and textured block icons.

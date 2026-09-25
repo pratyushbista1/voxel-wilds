@@ -172,8 +172,8 @@ namespace VoxelWilds
                     for (int x = 0; x < 16; x++)
                     {
                         int depth = 3 + (int)(Hash(x / 2, 17, 83) % 3);
-                        p.Rect(x, 0, 1, depth, Shade(0x709644, (int)(Hash(x, 6, 71) % 15) - 7));
-                        p.Pixel(x, depth, 0x547638); p.Pixel(x, 0, Shade(0x89ac52, (int)(Hash(x, 0, 13) % 10) - 5));
+                        p.Rect(x, 0, 1, depth, Shade(0x638849, (int)(Hash(x / 2, 6, 71) % 9) - 4));
+                        p.Pixel(x, depth, 0x4f723e); p.Pixel(x, 0, Shade(0x739752, (int)(Hash(x / 2, 0, 13) % 8) - 4));
                     }
                     break;
                 case LogEnd: LogRings(p); break;
@@ -203,44 +203,48 @@ namespace VoxelWilds
 
         private static void Dirt(Tile p)
         {
-            p.Noise(0x936744, 10, 2);
-            p.Flecks(20, 2, 1, 0xaf8054, 0x6f5038);
-            p.Flecks(9, 1, 1, 0xc19869, 0x647064);
+            p.Noise(0x856248, 7, 3);
+            p.Flecks(18, 2, 1, 0x9b7656, 0x6d503d);
+            p.Flecks(6, 1, 1, 0xb08c68, 0x787a6b);
         }
 
         private static void Grass(Tile p)
         {
-            p.Noise(0x81a34c, 11, 2);
-            p.Flecks(16, 2, 1, 0x71933e, 0x92b35b);
-            for (int n = 0; n < 13; n++)
+            p.Noise(0x68944f, 5, 3);
+            p.Flecks(15, 2, 2, 0x608949, 0x749d59);
+            for (int n = 0; n < 7; n++)
             {
                 int x = (int)(Hash(n, 4, 67) % 16), y = (int)(Hash(n, 7, 97) % 16);
-                p.Rect(x, y, 1, 2, 0xa0bb65); p.Pixel(x + 1, y + 1, 0x6d8d3f);
+                p.Rect(x, y, 2, 1, 0x7aa35d); p.Pixel(x + 1, y + 1, 0x5c8446);
             }
         }
 
         private static void Stone(Tile p)
         {
-            p.Noise(0x90998f, 8, 3); p.Flecks(14, 2, 1, 0xa7ada0, 0x7e897f);
-            p.Rect(1, 4, 5, 1, 0x788379); p.Rect(2, 5, 5, 1, 0x9da69a);
-            p.Rect(10, 10, 5, 1, 0x748176); p.Rect(11, 11, 4, 1, 0xa4ab9e);
-            p.Rect(6, 14, 3, 1, 0x7d887c);
+            p.Noise(0x888a87, 5, 3); p.Flecks(14, 3, 2, 0x92938f, 0x7c7f7c);
+            p.Rect(2, 4, 4, 1, 0x747873); p.Rect(10, 11, 3, 1, 0x989a94);
+            p.Rect(7, 14, 3, 1, 0x81857e);
         }
 
         private static void Cobble(Tile p, uint face, uint joint, uint highlight)
         {
-            p.Noise(face, 9, 2);
-            for (int row = 0; row < 4; row++)
+            int[] centerX = { 2, 8, 13, 5, 12, 1, 8, 14 };
+            int[] centerY = { 2, 1, 4, 7, 10, 12, 14, 15 };
+            for (int y = 0; y < TileSize; y++)
+            for (int x = 0; x < TileSize; x++)
             {
-                int y = row * 4;
-                for (int x = -4 + (row % 2) * 4; x < 16; x += 8)
+                int nearest = 0, first = int.MaxValue, second = int.MaxValue;
+                for (int n = 0; n < centerX.Length; n++)
                 {
-                    int shift = (row + x + 16) % 3;
-                    p.Rect(x, y, 7, 1, joint); p.Rect(x, y, 1, 3, joint);
-                    p.Pixel(x + 1, y + 3, joint); p.Rect(x + 2, y + 3, 5, 1, joint);
-                    p.Rect(x + 1, y + 1, 5 - shift, 1, highlight);
-                    p.Pixel(x + 6, y + 2, Shade(face, -20));
+                    int dx = Mathf.Abs(x - centerX[n]), dy = Mathf.Abs(y - centerY[n]);
+                    dx = Mathf.Min(dx, TileSize - dx); dy = Mathf.Min(dy, TileSize - dy);
+                    int distance = dx * dx + dy * dy;
+                    if (distance < first) { second = first; first = distance; nearest = n; }
+                    else if (distance < second) second = distance;
                 }
+                uint color = second - first <= 3 ? joint : second - first <= 8 && y < centerY[nearest] ? highlight :
+                    Shade(face, (int)(Hash(nearest, 17, 211) % 13) - 6);
+                p.Pixel(x, y, color);
             }
         }
 
@@ -282,14 +286,16 @@ namespace VoxelWilds
 
         private static void Leaves(Tile p)
         {
-            p.Noise(0x4f7638, 8, 3);
-            for (int y = -1; y < 16; y += 4)
-                for (int x = -1 + ((y + 1) / 4 % 2) * 2; x < 16; x += 4)
-                {
-                    p.Rect(x + 1, y, 2, 1, 0x74934b); p.Rect(x, y + 1, 4, 2, 0x618a42);
-                    p.Rect(x + 1, y + 1, 2, 1, 0x8ca75d); p.Rect(x + 1, y + 3, 2, 1, 0x36592f);
-                    p.Pixel(x + 3, y + 2, 0x456d34);
-                }
+            p.Noise(0x456d3c, 6, 3);
+            for (int n = 0; n < 19; n++)
+            {
+                int x = (int)(Hash(n, 31, 113) % 15), y = (int)(Hash(n, 89, 59) % 15);
+                p.Rect(x, y, 3, 2, n % 2 == 0 ? 0x598044U : 0x385b34U);
+                p.Rect(x + 1, y, 2, 1, n % 2 == 0 ? 0x739453U : 0x507941U);
+                p.Pixel(x, y + 2, 0x2e4e30);
+            }
+            p.Rect(2, 3, 1, 2, 0, 0); p.Rect(9, 1, 2, 1, 0, 0);
+            p.Rect(6, 10, 2, 1, 0, 0); p.Rect(13, 7, 1, 2, 0, 0);
         }
 
         private static void Bricks(Tile p, uint face, uint mortar, uint highlight)
@@ -330,12 +336,12 @@ namespace VoxelWilds
 
         private static void Water(Tile p)
         {
-            p.Noise(0x4b929e, 4, 4);
+            p.Noise(0x3e68ad, 3, 4);
             for (int row = 0; row < 4; row++)
             {
                 int y = 2 + row * 4, x = row * 5 % 12;
-                p.Rect(x, y, 4, 1, 0x6baeb3); p.Rect((x + 4) % 16, y + 1, 3, 1, 0x5c9faa);
-                p.Rect((x + 7) % 16, y + 2, 4, 1, 0x3e8496);
+                p.Rect(x, y, 4, 1, 0x547dbb); p.Rect((x + 4) % 16, y + 1, 3, 1, 0x4671b5);
+                p.Rect((x + 7) % 16, y + 2, 4, 1, 0x385fa1);
             }
         }
 
@@ -472,10 +478,10 @@ namespace VoxelWilds
             {
                 int x = 2 + blade * 3, top = 4 + (int)(Hash(blade, 47, 19) % 6);
                 int lean = blade < 2 ? -1 : 1;
-                p.Rect(x, top + 3, 1, 13 - top, 0x688b3c);
-                p.Rect(x + lean, top, 1, 5, 0x8caa50);
-                p.Pixel(x + lean * 2, top - 1, 0xa3b863);
-                p.Rect(x - lean, 12, 1, 4, 0x527437);
+                p.Rect(x, top + 3, 1, 13 - top, 0x60884a);
+                p.Rect(x + lean, top, 1, 5, 0x729951);
+                p.Pixel(x + lean * 2, top - 1, 0x83a55e);
+                p.Rect(x - lean, 12, 1, 4, 0x4b723c);
             }
             if (!flower) return;
             p.Rect(7, 4, 1, 12, 0x557d3b);

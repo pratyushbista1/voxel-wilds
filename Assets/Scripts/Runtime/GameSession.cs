@@ -45,10 +45,13 @@ namespace VoxelWilds
         private SessionSave save;
         private string savePath;
         private FluidSimulation fluids;
+        private PortalSimulation portals;
         private Light sun;
         private float autosave,portalTime,portalCooldown,sleepTimer;
         private readonly Dictionary<Cell,ContainerSave> containers=new Dictionary<Cell,ContainerSave>();
         private readonly List<DroppedItem> drops=new List<DroppedItem>();
+        private readonly Dictionary<int,Sprite> dropSprites=new Dictionary<int,Sprite>();
+        private ItemIconAtlas dropIcons;
         private GameObject clouds;
         private Material skyMaterial,cloudMaterial;
 
@@ -92,12 +95,6 @@ namespace VoxelWilds
         {
             save=new SessionSave{Name=string.IsNullOrWhiteSpace(name)?"New world":name.Trim(),Seed=seed,Creative=creative};
             savePath=Path.Combine(SaveDirectory,"world-"+Guid.NewGuid().ToString("N")+".vws");
-            save.Inventory.Add(Items.WoodenPickaxe,1);save.Inventory.Add((int)Block.Log,8);save.Inventory.Add(Items.Berries,12);
-            if(creative)
-            {
-                int[] starter={(int)Block.Grass,(int)Block.Stone,(int)Block.Planks,Items.CrystalPickaxe,Items.CrystalSword,Items.WaterBucket,Items.LavaBucket,(int)Block.Bed,Items.EndermanEgg};
-                for(int i=0;i<9;i++)save.Inventory.Slots[i]=new ItemStack(starter[i],Items.MaxStack(starter[i]));
-            }
             StartSavedWorld();SaveWorld();
         }
         public void LoadWorld(string path)
@@ -136,16 +133,17 @@ namespace VoxelWilds
             if(Player.Dead){Player.ResetVitals();Respawn();}
             Paused=false;Sleeping=false;autosave=0;Hud.ShowGame();LockCursor();
         }
-        private void LoadDimension(Dimension dimension,Vector3 landing)
+        private void LoadDimension(Dimension dimension,Vector3 landing,bool resolveLanding=true)
         {
-            fluids?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop!=null)Destroy(drop.gameObject);drops.Clear();containers.Clear();
+            fluids?.Dispose();portals?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop!=null)Destroy(drop.gameObject);drops.Clear();containers.Clear();
             World=new World(save.Seed,dimension);var state=save.Dimensions.Find(x=>x.Id==(int)dimension);
             if(state!=null)
             {
                 World.ApplyEdits(state.Edits.Select(e=>new KeyValuePair<Cell,Voxel>(new Cell(e.X,e.Y,e.Z),new Voxel((Block)e.Id,e.Level))));
                 foreach(var box in state.Containers)containers[new Cell(box.X,box.Y,box.Z)]=box;
             }
-            Renderer.Init(World);landing=FindSafe(landing);Renderer.EnsureImmediate(landing);Player.gameObject.SetActive(true);Player.Teleport(landing);
+            portals=new PortalSimulation(World);portals.Tick();
+            Renderer.Init(World);if(resolveLanding)landing=FindSafe(landing);Renderer.EnsureImmediate(landing);Player.gameObject.SetActive(true);Player.Teleport(landing);
             fluids=new FluidSimulation(World);Mobs.Init(this);
             if(state!=null){Mobs.RestoreMarkers(state.MobMarkers);Mobs.Restore(state.Mobs);foreach(var drop in state.Drops)if(drop.Stack!=null&&!drop.Stack.Empty&&drop.Life>0)DropStack(new Vector3(drop.X,drop.Y,drop.Z),drop.Stack,drop.Life);}
             save.Dimension=(int)dimension;portalCooldown=3;portalTime=0;BuildClouds();UpdateSky();
@@ -186,7 +184,7 @@ namespace VoxelWilds
             if(!Playing)return;
             save.Day=Mathf.Repeat(save.Day+dt/1200,1);UpdateSky();Renderer.Tick(Player.transform.position,Settings.ViewDistance);fluids.Tick(dt,512);
             foreach(var pair in containers)if(pair.Value.Furnace!=null&&World.GetBlock(pair.Key)==Block.Furnace)pair.Value.Furnace.Tick(dt);
-            portalCooldown-=dt;CheckPortal(dt);autosave+=dt;if(autosave>=20){autosave=0;SaveWorld();}
+            portals.Tick();portalCooldown-=dt;CheckPortal(dt);autosave+=dt;if(autosave>=20){autosave=0;SaveWorld();}
         }
         private void UpdateSky()
         {
@@ -243,19 +241,20 @@ namespace VoxelWilds
         }
         private void CaptureDimension()
         {
+            portals?.Tick();
             var state=new DimensionSave{Id=(int)World.Dimension,Mobs=Mobs.Capture(),MobMarkers=Mobs.CaptureMarkers()};
             foreach(var pair in World.Edits)state.Edits.Add(new EditSave{X=pair.Key.X,Y=pair.Key.Y,Z=pair.Key.Z,Id=(int)pair.Value.Id,Level=pair.Value.Level});
             state.Containers.AddRange(containers.Values);
             foreach(var drop in drops)if(drop!=null&&drop.Stack!=null&&!drop.Stack.Empty)state.Drops.Add(new DropSave{X=drop.transform.position.x,Y=drop.transform.position.y,Z=drop.transform.position.z,Life=drop.Life,Stack=drop.Stack.Clone()});
             save.Dimensions.RemoveAll(x=>x.Id==state.Id);save.Dimensions.Add(state);
         }
-        public void ReturnToTitle(){Hud.Close();if(!SaveWorld())return;fluids?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop)Destroy(drop.gameObject);drops.Clear();Player.gameObject.SetActive(false);World=null;Paused=false;Hud.ShowTitle();Cursor.lockState=CursorLockMode.None;Cursor.visible=true;}
+        public void ReturnToTitle(){Hud.Close();if(!SaveWorld())return;fluids?.Dispose();portals?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop)Destroy(drop.gameObject);drops.Clear();Player.gameObject.SetActive(false);World=null;Paused=false;Hud.ShowTitle();Cursor.lockState=CursorLockMode.None;Cursor.visible=true;}
         public void Die(){Hud.Close();DeathRemaining=3;Sleeping=false;Paused=false;foreach(var item in Player.Inventory.TakeAll())DropStack(Player.transform.position+Vector3.up,item);SaveWorld();LockCursor();}
         private void Respawn()
         {
             Hud.Close();CaptureDimension();Vector3 destination=new Vector3(8.5f,33.1f,8.5f);
             if(World.Dimension!=Dimension.Overworld)LoadDimension(Dimension.Overworld,destination);
-            if(save.HasBed&&Blocks.IsBed(World.GetBlock(new Cell(save.BedX,save.BedY,save.BedZ))))destination=new Vector3(save.BedX+.5f,save.BedY+1,save.BedZ+.5f);
+            if(save.HasBed&&BedRules.IsComplete(World,new Cell(save.BedX,save.BedY,save.BedZ)))destination=new Vector3(save.BedX+.5f,save.BedY+1,save.BedZ+.5f);
             else if(save.HasBed){save.HasBed=false;Notify("Your bed is missing. Returning to world spawn.");}
             Player.ResetVitals();destination=FindSafe(destination);Renderer.EnsureImmediate(destination);Player.Teleport(destination);DeathRemaining=0;SaveWorld();LockCursor();
         }
@@ -284,7 +283,7 @@ namespace VoxelWilds
                 }
             }
             if(!hasTarget)return false;
-            if(id==Items.FlintSteel&&TryIgnite(target)){if(!Player.IsCreative)Player.Inventory.WearSelected(1);return true;}
+            if(id==Items.FlintSteel&&TryIgnite(adjacent)){if(!Player.IsCreative)Player.Inventory.WearSelected(1);return true;}
             if(id==Items.EmptyBucket && Blocks.IsFluid(block))
             {
                 if(World.Get(target).Level!=0){Notify("Buckets collect source blocks, not flowing fluid.");return true;}
@@ -312,8 +311,10 @@ namespace VoxelWilds
             }
             else if(Blocks.IsBed(place))
             {
-                Cell second=adjacent+new Cell(0,0,1);if(World.GetBlock(second)!=Block.Air||!World.Solid(adjacent.Down)||!World.Solid(second.Down))return false;
-                World.Set(adjacent,Block.Bed);World.Set(second,Block.BedHead);
+                int facing=Mathf.RoundToInt(Player.Eye.transform.eulerAngles.y/90)&3;
+                Cell second=adjacent+BedRules.Direction(facing);
+                if(new Bounds(new Vector3(second.X+.5f,second.Y+BedRules.Height*.5f,second.Z+.5f),new Vector3(1,BedRules.Height,1)).Intersects(new Bounds(Player.transform.position+Vector3.up*.9f,new Vector3(.6f,1.8f,.6f))))return false;
+                if(!BedRules.TryPlace(World,adjacent,facing))return false;
             }
             else World.Set(adjacent,place);
             if(!Player.IsCreative){if(id==Items.WaterBucket||id==Items.LavaBucket)Player.Inventory.Slots[Player.Inventory.Selected]=new ItemStack(Items.EmptyBucket);else Player.ConsumeHeld();}
@@ -330,7 +331,6 @@ namespace VoxelWilds
                 if(box.Furnace!=null)foreach(var stack in new[]{box.Furnace.Input,box.Furnace.Fuel,box.Furnace.Output})if(stack!=null&&!stack.Empty)DropStack(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),stack);
                 containers.Remove(target);
             }
-            if(Blocks.IsBed(id)){Cell partner=id==Block.BedHead?target+new Cell(0,0,-1):target+new Cell(0,0,1);if(Blocks.IsBed(World.GetBlock(partner)))World.Set(partner,Block.Air);}
             if(id==Block.Door)DoorRules.Remove(World,target);else World.Set(target,Block.Air);
             if(!Player.IsCreative&&Items.CanHarvest(Player.Inventory.Held?.Id??0,id))
             {
@@ -339,7 +339,7 @@ namespace VoxelWilds
                 if(id==Block.Gravel&&UnityEngine.Random.value<.1f)drop=Items.Flint;
                 if(drop>0)DropLoot(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),drop,count);
             }
-            if(id==Block.Obsidian)for(int y=-4;y<=4;y++)for(int z=-3;z<=3;z++)for(int x=-3;x<=3;x++){Cell p=target+new Cell(x,y,z);Block nearby=World.GetBlock(p);if(nearby==Block.PortalX||nearby==Block.PortalZ)World.Set(p,Block.Air);}
+            portals.Tick();
         }
         private ContainerSave Container(Cell p)
         {
@@ -359,6 +359,7 @@ namespace VoxelWilds
         }
         private void Sleep(Cell p)
         {
+            if(!BedRules.IsComplete(World,p)){Notify("This bed is incomplete.");return;}
             if(World.Dimension!=Dimension.Overworld){World.Set(p,Block.Air);Explode(new Vector3(p.X+.5f,p.Y+.5f,p.Z+.5f),4);return;}
             save.HasBed=true;save.BedX=p.X;save.BedY=p.Y;save.BedZ=p.Z;
             if(!MobRules.IsNight(TimeOfDay)){Notify("Respawn point set. You can sleep at night.");SaveWorld();return;}
@@ -367,49 +368,105 @@ namespace VoxelWilds
         }
         private bool TryIgnite(Cell p)
         {
-            for(int axis=0;axis<2;axis++)for(int horizontal=-3;horizontal<=0;horizontal++)for(int vertical=-4;vertical<=0;vertical++)
+            if(World.Dimension==Dimension.End)return false;
+            if(PortalRules.TryIgnite(World,p,out _)){portals.Tick();return true;}
+            Notify("Use flint and steel inside a complete obsidian rectangle.");return false;
+        }
+        private bool TouchesPortal(out Cell touched)
+        {
+            Vector3 feet=Player.transform.position;
+            Cell low=PlayerController.ToCell(feet+new Vector3(-.3f,.05f,-.3f)),high=PlayerController.ToCell(feet+new Vector3(.3f,1.75f,.3f));
+            var body=new Bounds(feet+Vector3.up*.9f,new Vector3(.6f,1.8f,.6f));
+            for(int y=low.Y;y<=high.Y;y++)for(int z=low.Z;z<=high.Z;z++)for(int x=low.X;x<=high.X;x++)
             {
-                Cell origin=p+new Cell(axis==0?horizontal:0,vertical,axis==1?horizontal:0);bool valid=true,already=true;
-                for(int y=0;y<5&&valid;y++)for(int x=0;x<4;x++)
-                {
-                    if((x==0||x==3)&&(y==0||y==4))continue;
-                    Block id=World.GetBlock(origin+new Cell(axis==0?x:0,y,axis==1?x:0));
-                    if(x==0||x==3||y==0||y==4){if(id!=Block.Obsidian)valid=false;}
-                    else {if(id!=Block.Air&&id!=Block.PortalX&&id!=Block.PortalZ)valid=false;if(id==Block.Air)already=false;}
-                }
-                if(!valid)continue;if(already){Notify("The portal is already lit.");return false;}
-                for(int y=1;y<=3;y++)for(int x=1;x<=2;x++)World.Set(origin+new Cell(axis==0?x:0,y,axis==1?x:0),axis==0?Block.PortalX:Block.PortalZ);
-                Notify("Portal ignited.");return true;
+                Cell p=new Cell(x,y,z);Block id=World.GetBlock(p);if(!PortalRules.IsPortal(id))continue;
+                var sheet=new Bounds(new Vector3(x+.5f,y+.5f,z+.5f),id==Block.PortalX?new Vector3(1,1,.125f):new Vector3(.125f,1,1));
+                if(body.Intersects(sheet)){touched=p;return true;}
             }
-            Notify("Build a 4 by 5 obsidian frame with a clear 2 by 3 opening.");return false;
+            touched=default;return false;
         }
         private void CheckPortal(float dt)
         {
             Cell p=PlayerController.ToCell(Player.transform.position+Vector3.up*.1f);Block block=World.GetBlock(p);Block floor=World.GetBlock(p.Down);
-            if(portalCooldown>0)return;
+            bool touching=TouchesPortal(out _);
+            if(portalCooldown>0){if(touching)portalCooldown=3;portalTime=0;return;}
             if(block==Block.EndPortal||floor==Block.EndPortal)
             {
                 if(World.Dimension==Dimension.End){if(EndDragonDefeated)Transfer(Dimension.Overworld);else{Notify("Defeat the dragon to open the exit.");portalCooldown=3;}}
                 else if(Player.IsCreative||save.EndEyes.Count>=12)Transfer(Dimension.End);
                 else{Notify("Place eyes in 12 portal frames to open the End.");portalCooldown=3;}return;
             }
-            if(block==Block.PortalX||block==Block.PortalZ){portalTime+=dt;if(portalTime>=(Player.IsCreative?.4f:4))Transfer(World.Dimension==Dimension.Nether?Dimension.Overworld:Dimension.Nether);}
+            if(touching){portalTime+=dt;if(portalTime>=(Player.IsCreative?.05f:4))Transfer(World.Dimension==Dimension.Nether?Dimension.Overworld:Dimension.Nether);}
             else portalTime=0;
         }
         public void Transfer(Dimension destination)
         {
-            Hud.Close();CaptureDimension();Dimension from=World.Dimension;Vector3 old=Player.transform.position,position;
+            if(destination==World.Dimension)return;
+            Hud.Close();portals.Tick();CaptureDimension();Dimension from=World.Dimension;Vector3 old=Player.transform.position,position;
+            bool alongX=!TouchesPortal(out Cell entry)||World.GetBlock(entry)==Block.PortalX;
             if(destination==Dimension.End)position=new Vector3(8.5f,45.1f,8.5f);
             else if(from==Dimension.End)position=new Vector3(8.5f,33.1f,8.5f);
-            else{float factor=destination==Dimension.Nether?.125f:8;position=new Vector3(old.x*factor,33,old.z*factor);}
-            LoadDimension(destination,position);
-            if(destination!=Dimension.End&&from!=Dimension.End)
+            else{float factor=destination==Dimension.Nether?.125f:8;position=new Vector3(Mathf.Clamp(old.x*factor,-999900,999900),Mathf.Clamp(old.y,2,World.Height-6),Mathf.Clamp(old.z*factor,-999900,999900));}
+            bool netherTravel=destination!=Dimension.End&&from!=Dimension.End;
+            LoadDimension(destination,position,!netherTravel);
+            if(netherTravel)
             {
-                Cell origin=PlayerController.ToCell(Player.transform.position)+new Cell(-1,-1,3);
-                for(int y=0;y<5;y++)for(int x=0;x<4;x++)World.Set(origin+new Cell(x,y,0),x==0||x==3||y==0||y==4?Block.Obsidian:Block.PortalX);
+                int radius=destination==Dimension.Nether?16:128;
+                if(!PortalRules.TryNearest(World,PlayerController.ToCell(position),radius,out var arrival)&&!TryBuildArrivalPortal(position,alongX,out arrival))
+                {
+                    LoadDimension(from,old);Notify("No safe space for a destination portal.");return;
+                }
+                Vector3 landing=new Vector3(arrival.Origin.X+(arrival.AlongX?(arrival.Width+2)*.5f:.5f),arrival.Origin.Y+1.08f,arrival.Origin.Z+(arrival.AlongX?.5f:(arrival.Width+2)*.5f));
+                Player.Teleport(landing);portals.Tick();portalCooldown=3;portalTime=0;
                 Renderer.EnsureImmediate(Player.transform.position);
             }
             SaveWorld();Notify("Entered the "+destination+".");LockCursor();
+        }
+        private bool TryBuildArrivalPortal(Vector3 target,bool alongX,out PortalFrame frame)
+        {
+            Cell center=PlayerController.ToCell(target);frame=default;
+            int maxY=World.Dimension==Dimension.Nether?78:World.Height-6;
+            int preferred=Mathf.Clamp(center.Y-1,2,maxY);
+            var protectedEdits=new HashSet<Cell>(World.Edits.Where(e=>e.Value.Id!=Block.Air).Select(e=>e.Key));
+            for(int radius=0;radius<=16;radius++)for(int z=-radius;z<=radius;z++)for(int x=-radius;x<=radius;x++)
+            {
+                if(radius>0&&Math.Max(Math.Abs(x),Math.Abs(z))!=radius)continue;
+                for(int offset=0;offset<World.Height*2;offset++)
+                {
+                    int y=offset%2==0?preferred+offset/2:preferred-(offset+1)/2;if(y<2||y>maxY)continue;
+                    var candidate=new PortalFrame(new Cell(center.X+x,y,center.Z+z),2,3,alongX);
+                    if(!ClearArrivalVolume(candidate,false,protectedEdits))continue;
+                    BuildArrivalPortal(candidate,false);frame=candidate;return true;
+                }
+            }
+            for(int radius=0;radius<=16;radius++)for(int z=-radius;z<=radius;z++)for(int x=-radius;x<=radius;x++)
+            {
+                if(radius>0&&Math.Max(Math.Abs(x),Math.Abs(z))!=radius)continue;
+                var candidate=new PortalFrame(new Cell(center.X+x,preferred,center.Z+z),2,3,alongX);
+                if(!ClearArrivalVolume(candidate,true,protectedEdits))continue;
+                BuildArrivalPortal(candidate,true);frame=candidate;return true;
+            }
+            return false;
+        }
+        private bool ClearArrivalVolume(PortalFrame frame,bool excavate,HashSet<Cell> protectedEdits)
+        {
+            for(int depth=-1;depth<=1;depth++)for(int y=0;y<=4;y++)for(int x=0;x<=3;x++)
+            {
+                Cell p=frame.At(x,y)+new Cell(frame.AlongX?0:depth,0,frame.AlongX?depth:0);Block id=World.GetBlock(p);
+                if(protectedEdits.Contains(p))return false;
+                if(!excavate)
+                {
+                    if(y==0?!World.Solid(p):id!=Block.Air)return false;
+                }
+                else if(id==Block.Bedrock||id==Block.Chest||id==Block.Furnace||id==Block.Spawner||id==Block.Door||Blocks.IsBed(id)||id==Block.EndFrame||PortalRules.IsPortal(id))return false;
+            }
+            return true;
+        }
+        private void BuildArrivalPortal(PortalFrame frame,bool excavate)
+        {
+            if(excavate)for(int depth=-1;depth<=1;depth++)for(int y=0;y<=4;y++)for(int x=0;x<=3;x++)
+                World.Set(frame.At(x,y)+new Cell(frame.AlongX?0:depth,0,frame.AlongX?depth:0),y==0?Block.Obsidian:Block.Air);
+            for(int y=0;y<=4;y++)for(int x=0;x<=3;x++)World.Set(frame.At(x,y),x==0||x==3||y==0||y==4?Block.Obsidian:frame.Portal);
         }
         public void DefeatDragon(){save.EndDragonDefeated=true;Notify("The dragon has fallen. The exit portal is open.");SaveWorld();}
         public void Explode(Vector3 position,float radius)
@@ -427,23 +484,52 @@ namespace VoxelWilds
         public void DropStack(Vector3 position,ItemStack stack,float life=300)
         {
             if(stack==null||stack.Empty)return;int cap=Items.MaxStack(stack.Id);if(cap<=0)return;
+            drops.RemoveAll(item=>item==null);
             int remaining=stack.Count;
-            while(remaining>0){int count=Mathf.Min(cap,remaining);remaining-=count;var obj=GameObject.CreatePrimitive(PrimitiveType.Cube);obj.name=Items.Name(stack.Id);Destroy(obj.GetComponent<Collider>());obj.transform.position=position;obj.transform.localScale=Vector3.one*.23f;var mat=new Material(Shader.Find("Standard"));uint rgb=Blocks.ColorRgb(Items.PlaceBlock(stack.Id));mat.color=new Color(((rgb>>16)&255)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f);obj.GetComponent<Renderer>().material=mat;var drop=obj.AddComponent<DroppedItem>();drop.Init(this,new ItemStack(stack.Id,count,stack.Durability),life);drops.Add(drop);}
+            while(remaining>0)
+            {
+                int count=Mathf.Min(cap,remaining);remaining-=count;
+                var obj=new GameObject(Items.Name(stack.Id));obj.transform.position=position;
+                var visual=new GameObject("Item");visual.transform.SetParent(obj.transform,false);
+                Block block=Items.PlaceBlock(stack.Id);
+                if(stack.Id<=(int)Block.EndFrame&&Blocks.IsSolid(block)&&!Blocks.IsBed(block)&&block!=Block.Door&&block!=Block.Chest)
+                {
+                    visual.AddComponent<MeshFilter>().sharedMesh=Renderer.BlockPreview(block);
+                    visual.AddComponent<MeshRenderer>().sharedMaterial=Renderer.TerrainMaterial;
+                    visual.transform.localScale=Vector3.one*.25f;
+                }
+                else
+                {
+                    if(!dropSprites.TryGetValue(stack.Id,out var sprite))
+                    {
+                        if(dropIcons==null)dropIcons=new ItemIconAtlas();
+                        Texture2D texture=dropIcons.Get(stack.Id);
+                        sprite=Sprite.Create(texture,new Rect(0,0,texture.width,texture.height),Vector2.one*.5f,32);
+                        dropSprites.Add(stack.Id,sprite);
+                    }
+                    visual.AddComponent<SpriteRenderer>().sprite=sprite;
+                    visual.transform.localScale=Vector3.one*.45f;
+                }
+                var drop=obj.AddComponent<DroppedItem>();drop.Init(this,new ItemStack(stack.Id,count,stack.Durability),life,visual.transform);drops.Add(drop);
+            }
         }
         private void OnApplicationFocus(bool focused){if(!focused&&World!=null&&!Player.Dead)SetPaused(true);}
         private void OnApplicationQuit(){Hud?.Close();SaveWorld();}
-        private void OnDestroy(){fluids?.Dispose();if(skyMaterial)Destroy(skyMaterial);if(cloudMaterial)Destroy(cloudMaterial);if(Instance==this)Instance=null;}
+        private void OnDestroy(){fluids?.Dispose();portals?.Dispose();foreach(var sprite in dropSprites.Values)if(sprite)Destroy(sprite);dropSprites.Clear();dropIcons?.Dispose();if(skyMaterial)Destroy(skyMaterial);if(cloudMaterial)Destroy(cloudMaterial);if(Instance==this)Instance=null;}
     }
     public sealed class DroppedItem : MonoBehaviour
     {
-        public ItemStack Stack;public float Life;private GameSession game;private float age,vertical;
-        public void Init(GameSession session,ItemStack stack,float life){game=session;Stack=stack;Life=life;}
+        public ItemStack Stack;public float Life;private GameSession game;private float age,vertical;private Transform visual;
+        public void Init(GameSession session,ItemStack stack,float life,Transform model=null){game=session;Stack=stack;Life=life;visual=model;}
         private void Update()
         {
             if(!game.Playing)return;float dt=Mathf.Min(Time.deltaTime,.1f);Life-=dt;age+=dt;if(Life<=0){Destroy(gameObject);return;}
-            transform.Rotate(0,dt*55,0);Cell below=PlayerController.ToCell(transform.position-Vector3.up*.14f);Block id=game.World.GetBlock(below);
+            if(visual){visual.Rotate(0,dt*55,0);visual.localPosition=Vector3.up*(.05f+Mathf.Sin(age*2)*.025f);}
+            Cell below=PlayerController.ToCell(transform.position-Vector3.up*.14f);Block id=game.World.GetBlock(below);
             if(id==Block.Lava){Destroy(gameObject);return;}
-            if(!Blocks.IsSolid(id)){vertical=Mathf.Max(-10,vertical-16*dt);transform.position+=Vector3.up*vertical*dt;}else vertical=0;
+            Vector3 position=transform.position;
+            position.y=DropPhysics.Fall(game.World,position.x,position.y,position.z,ref vertical,dt);
+            transform.position=position;
             if(age>1&&Vector3.Distance(transform.position,game.Player.transform.position+Vector3.up*.7f)<1.8f)
             {
                 int left=game.Player.Inventory.Add(Stack.Id,Stack.Count,Stack.Durability);Stack.Count=left;if(left==0)Destroy(gameObject);

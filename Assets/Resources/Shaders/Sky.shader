@@ -21,10 +21,16 @@ Shader "VoxelWilds/Sky"
                 float3 c=lerp(_SkyHorizon.rgb,d.y>=0?_SkyTop.rgb:_SkyGround.rgb,h);
                 if(_Dimension<.5)
                 {
-                    float sun=dot(d,normalize(_SunDirection.xyz));float moon=-sun;
+                    float3 sunDirection=normalize(_SunDirection.xyz);
+                    float sun=dot(d,sunDirection);float moon=-sun;
+                    float3 up=abs(sunDirection.y)>.98?float3(0,0,1):float3(0,1,0);
+                    float3 right=normalize(cross(up,sunDirection));up=cross(sunDirection,right);
+                    float2 celestialUv=float2(dot(d,right),dot(d,up));
+                    float square=1-smoothstep(.023,.024,max(abs(celestialUv.x),abs(celestialUv.y)));
                     c+=_SunColor.rgb*pow(saturate(sun),28)*.13;
-                    c=lerp(c,_SunColor.rgb,smoothstep(.99935,.99965,sun));
-                    c=lerp(c,float3(.71,.78,.91),smoothstep(.9995,.9997,moon)*_Night);
+                    c=lerp(c,_SunColor.rgb,square*step(.99,sun));
+                    float moonDetail=.84+.16*hash(floor(float3(celestialUv*240,0)));
+                    c=lerp(c,float3(.71,.78,.91)*moonDetail,square*step(.99,moon)*_Night);
                     float stars=step(.9974,hash(floor(d*420)))*pow(saturate(d.y),.35)*_Night;
                     c+=stars*.75;
                 }

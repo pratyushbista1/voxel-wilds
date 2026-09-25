@@ -59,9 +59,12 @@ Shader "VoxelWilds/Cinematic"
             return half4(color, 1);
         }
 
-        half3 AcesToneMap(half3 color)
+        half3 NeutralToneMap(half3 color)
         {
-            return saturate((color * (2.51 * color + .03)) / (color * (2.43 * color + .59) + .14));
+            half peak = max(color.r, max(color.g, color.b));
+            half shoulder = max(peak - .65, 0);
+            half mapped = min(peak, .65) + shoulder / (1 + shoulder / .35);
+            return color * (mapped / max(peak, .0001));
         }
 
         half4 Composite(v2f_img i) : SV_Target
@@ -72,10 +75,7 @@ Shader "VoxelWilds/Cinematic"
             #endif
             half3 color = SampleScene(i.uv) * _Exposure;
             color += tex2D(_BloomTex, bloomUv).rgb * _BloomIntensity;
-            color = AcesToneMap(color * half3(1.012, 1, .984));
-            half luminance = dot(color, half3(.2126, .7152, .0722));
-            color = lerp(luminance.xxx, color, 1.025);
-            color = saturate((color - .18) * 1.015 + .18);
+            color = NeutralToneMap(color);
             #ifdef UNITY_COLORSPACE_GAMMA
                 color = LinearToGammaSpace(color);
             #endif

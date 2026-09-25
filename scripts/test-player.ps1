@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $voxelRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-if (-not $Player) { $Player = Join-Path $voxelRoot 'release/2.0.3/Windows/Voxel Wilds.exe' }
+if (-not $Player) { $Player = Join-Path $voxelRoot 'release/2.0.4/Windows/Voxel Wilds.exe' }
 $voxelPlayer = [IO.Path]::GetFullPath($Player)
 if (-not (Test-Path -LiteralPath $voxelPlayer -PathType Leaf)) { throw "Windows player not found: $voxelPlayer. Run scripts/build-unity.ps1 first." }
 $voxelRun = 'unity-smoke-' + [Guid]::NewGuid().ToString('N')

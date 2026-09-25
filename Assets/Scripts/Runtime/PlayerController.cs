@@ -27,6 +27,7 @@ namespace VoxelWilds
         private Vector3 velocity, planarVelocity;
         private float hitCooldown, attackCooldown, useCooldown, regeneration, foodTimer, hazardTimer, fallStart, previousSpace, bowCharge;
         private Cell mining;
+        private int lastUseItem;
         private float gait, cameraWalkWeight, sprintViewWeight;
         private LineRenderer selection;
         public void Init(GameSession session)
@@ -40,6 +41,7 @@ namespace VoxelWilds
         }
         public void Teleport(Vector3 position)
         {
+            foodTimer=bowCharge=0;
             controller.enabled=false;transform.position=position;controller.enabled=true;velocity=planarVelocity=Vector3.zero;fallStart=position.y;MiningProgress=0;gait=cameraWalkWeight=sprintViewWeight=0;HorizontalSpeed=0;Grounded=WalkingOnGround=IsSprinting=false;View.ResetMotion();Eye.transform.localPosition=new Vector3(0,1.62f,0);Eye.fieldOfView=game.Settings.FieldOfView;Physics.SyncTransforms();
         }
         public void ResetVitals(){Health=Hunger=20;Air=10;Saturation=5;hitCooldown=1;foodTimer=hazardTimer=regeneration=0;Flying=false;}
@@ -47,7 +49,7 @@ namespace VoxelWilds
         {
             if(game==null || game.World==null)return;
             float dt=Mathf.Min(Time.deltaTime,.1f);hitCooldown-=dt;attackCooldown-=dt;useCooldown-=dt;
-            if(!game.Playing){selection.enabled=false;return;}
+            if(!game.Playing){selection.enabled=false;foodTimer=bowCharge=0;return;}
             var feet=ToCell(transform.position+Vector3.up*.1f);Block fluid=game.World.GetBlock(feet);
             InWater=fluid==Block.Water;bool swimming=InWater||fluid==Block.Lava;
             bool control=!game.Hud.IsOpen;
@@ -71,13 +73,19 @@ namespace VoxelWilds
             float walkedDistance=StepMovement(dt,input,Input.GetKey(KeyCode.LeftControl),Input.GetKey(KeyCode.LeftShift),Input.GetKeyDown(KeyCode.Space),Input.GetKey(KeyCode.Space),control,swimming,usingItem);
             Vitals(dt,HorizontalSpeed,fluid);
             if(transform.position.y < -20)Damage(100,transform.position);
-            if(!control){MiningProgress=0;HasTarget=false;selection.enabled=false;bowCharge=0;AnimateHand(dt,0,false,Vector2.zero,false);return;}
+            if(!control){MiningProgress=0;HasTarget=false;selection.enabled=false;bowCharge=foodTimer=0;AnimateHand(dt,0,false,Vector2.zero,false);return;}
             HasTarget=Trace(Eye.transform.position,Eye.transform.forward,IsCreative?6:4.5f,out var hit,out var previous,Inventory.Held?.Id==Items.EmptyBucket);
             Target=hit;Adjacent=previous;DrawSelection();
             if(Input.GetMouseButton(0))MineOrAttack(dt);else MiningProgress=0;
             if(Input.GetMouseButtonDown(2)&&IsCreative&&HasTarget){int id=(int)game.World.GetBlock(Target);Inventory.Slots[Inventory.Selected]=new ItemStack(id,Items.MaxStack(id));}
             int item=Inventory.Held?.Id??0;
-            if(item==Items.Bow)
+            if(item!=lastUseItem||!Input.GetMouseButton(1))foodTimer=0;
+            if(item!=Items.Bow)bowCharge=0;
+            lastUseItem=item;
+            bool usedBlock=Input.GetMouseButtonDown(1)&&useCooldown<=0&&HasTarget
+                &&ItemUseRules.BlockTakesPriority(game.World.GetBlock(Target),Input.GetKey(KeyCode.LeftShift));
+            if(usedBlock){usedBlock=game.Use(true,Target,Adjacent);if(usedBlock){useCooldown=.2f;View.TriggerSwing(FirstPersonView.Action.Use);foodTimer=bowCharge=0;}}
+            if(!usedBlock&&item==Items.Bow)
             {
                 if(Input.GetMouseButton(1))bowCharge=Mathf.Min(1,bowCharge+dt);
                 if(Input.GetMouseButtonUp(1))
@@ -86,11 +94,11 @@ namespace VoxelWilds
                     bowCharge=0;
                 }
             }
-            else if(Input.GetMouseButton(1)&&Items.IsFood(item))
+            else if(!usedBlock&&Input.GetMouseButton(1)&&Items.IsFood(item))
             {
                 if(Hunger<20){foodTimer+=dt;if(foodTimer>=1.6f){Hunger=Mathf.Min(20,Hunger+Items.Food(item));Saturation=Mathf.Min(20,Saturation+Items.Saturation(item));ConsumeHeld();foodTimer=0;}}else foodTimer=0;
             }
-            else if(Input.GetMouseButtonDown(1)&&useCooldown<=0){if(game.Use(HasTarget,Target,Adjacent)){useCooldown=.2f;View.TriggerSwing(FirstPersonView.Action.Use);}}
+            else if(!usedBlock&&Input.GetMouseButtonDown(1)&&useCooldown<=0){if(game.Use(HasTarget,Target,Adjacent)){useCooldown=.2f;View.TriggerSwing(FirstPersonView.Action.Use);}}
             else foodTimer=0;
             AnimateHand(dt,walkedDistance,WalkingOnGround,lookDelta,Input.GetMouseButton(1)&&Items.IsFood(item)&&Hunger<20);
         }
@@ -208,7 +216,7 @@ namespace VoxelWilds
         private void MineOrAttack(float dt)
         {
             if(attackCooldown<=0 && game.Mobs.Attack(new Ray(Eye.transform.position,Eye.transform.forward),IsCreative?6:3.3f,Items.AttackDamage(Inventory.Held?.Id??0)))
-            {attackCooldown=.55f;View.TriggerSwing(FirstPersonView.Action.Attack);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(1);return;}
+            {attackCooldown=.55f;View.TriggerSwing(FirstPersonView.Action.Attack);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(ItemUseRules.AttackWear(Inventory.Held?.Id??0));return;}
             if(!HasTarget){MiningProgress=0;View.TriggerSwing(FirstPersonView.Action.Attack);return;}
             if(Target!=mining){mining=Target;MiningProgress=0;}
             Block id=game.World.GetBlock(Target);float hardness=Blocks.Hardness(id);
@@ -216,7 +224,7 @@ namespace VoxelWilds
             if(float.IsInfinity(hardness))return;
             float duration=IsCreative?.12f:Mathf.Max(.1f,hardness*(Items.CanHarvest(Inventory.Held?.Id??0,id)?1.5f:5)/Items.MiningSpeed(Inventory.Held?.Id??0,id));
             MiningProgress+=dt/duration;
-            if(MiningProgress>=1){game.BreakBlock(Target);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(1);}
+            if(MiningProgress>=1){int tool=Inventory.Held?.Id??0;game.BreakBlock(Target);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(ItemUseRules.MiningWear(tool));}
         }
         public bool Trace(Vector3 origin,Vector3 direction,float range,out Cell hit,out Cell previous,bool fluids=false)
         {
@@ -225,6 +233,7 @@ namespace VoxelWilds
             {
                 Vector3 point=origin+direction*distance;Cell cell=ToCell(point);Voxel voxel=game.World.Get(cell);Block id=voxel.Id;
                 if(id==Block.Door&&!DoorRules.Contains(voxel,point.x-cell.X,point.y-cell.Y,point.z-cell.Z)){previous=cell;continue;}
+                if(Blocks.IsBed(id)&&point.y-cell.Y>BedRules.Height){previous=cell;continue;}
                 if(id!=Block.Air && (fluids||!Blocks.IsFluid(id)) && id!=Block.PortalX&&id!=Block.PortalZ&&id!=Block.EndPortal){hit=cell;return true;}
                 previous=cell;
             }
