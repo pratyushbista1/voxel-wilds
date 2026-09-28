@@ -22,9 +22,10 @@ namespace VoxelWilds
         private int settingsTab;
         private readonly List<WorldEntry> worlds=new List<WorldEntry>();
         private ItemIconAtlas icons;
-        private GUIStyle text,title,heading,small,button,field,number,inventoryText,inventorySmall;
+        private GUIStyle text,title,heading,small,button,field,number,inventoryText,inventorySmall,endingTitle,endingKicker,endingBody,endingButton;
         private Texture2D heart;
-        private float width,height,scale;
+        private float width,height,scale,endingStarted;
+        private string endingWorldName;
         private readonly List<SlotTarget> dragTargets=new List<SlotTarget>();
         private int dragButton=-1;
         private bool recipeBookOpen,craftableOnly;
@@ -33,6 +34,9 @@ namespace VoxelWilds
         public Rect InventoryPanelRect { get; private set; }
         public Rect CraftingOutputRect { get; private set; }
         public Rect RecipeToggleRect { get; private set; }
+        public bool EndingVisible=>screen=="ending"&&game!=null&&game.Ending;
+        public Rect EndingContinueRect { get; private set; }
+        public Rect EndingTitleRect { get; private set; }
         public Rect InventorySlotRect(int index)=>PanelRect(7+(index<9?index:(index-9)%9)*18,index<9?141:83+(index-9)/9*18,18,18);
         public Rect CraftingSlotRect(int index){int size=screen=="crafting"?3:2;return PanelRect((size==3?29:87)+index%size*18,(size==3?16:25)+index/size*18,18,18);}
         private sealed class SlotTarget
@@ -48,6 +52,7 @@ namespace VoxelWilds
         public ItemStack[] CaptureTransient()=>grid.Concat(new[]{cursor}).Where(s=>s!=null&&!s.Empty).Select(s=>s.Clone()).ToArray();
         public void ShowGame(){screen="game";ClearTextFocus();}
         public void ShowTitle(){screen="title";ClearTextFocus();RefreshWorlds();}
+        public void ShowEnding(){Close();screen="ending";endingStarted=Time.unscaledTime;endingWorldName=game.WorldName;messageUntil=0;ClearTextFocus();game.LockCursor();}
         public void OpenInventory(){Open("inventory",2);}
         public void OpenCrafting(){Open("crafting",3);}
         public void OpenChest(ItemStack[] slots){Open("chest",2);chest=slots;}
@@ -102,6 +107,10 @@ namespace VoxelWilds
             inventorySmall=new GUIStyle(inventoryText){fontSize=16,wordWrap=true};
             button=new GUIStyle(GUI.skin.button){fontSize=17,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter};
             field=new GUIStyle(GUI.skin.textField){fontSize=19,padding=new RectOffset(10,10,10,7)};
+            endingTitle=new GUIStyle(title){fontSize=45,alignment=TextAnchor.MiddleCenter,normal={textColor=new Color(.98f,.94f,.84f)}};
+            endingKicker=new GUIStyle(small){fontSize=12,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter,normal={textColor=new Color(.77f,.67f,.89f)}};
+            endingBody=new GUIStyle(text){fontSize=18,alignment=TextAnchor.MiddleCenter,normal={textColor=new Color(.83f,.81f,.89f)}};
+            endingButton=new GUIStyle(button){normal={background=null,textColor=Color.white},hover={background=null,textColor=Color.white},active={background=null,textColor=Color.white},focused={background=null,textColor=Color.white},onNormal={background=null},onHover={background=null},onActive={background=null},onFocused={background=null}};
             string[] pattern={"00000000","01100110","11111111","11111111","01111110","00111100","00011000","00000000"};
             heart=new Texture2D(8,8){filterMode=FilterMode.Point};var pixels=new Color[64];
             for(int y=0;y<8;y++)for(int x=0;x<8;x++)pixels[(7-y)*8+x]=pattern[y][x]=='1'?Color.white:Color.clear;heart.SetPixels(pixels);heart.Apply();
@@ -111,7 +120,8 @@ namespace VoxelWilds
             if(game==null)return;bool released=Event.current.rawType==EventType.MouseUp;Styles();scale=Mathf.Max(.01f,Mathf.Min(Screen.height/720f,Screen.width/960f));width=Screen.width/scale;height=Screen.height/scale;
             if(cursor!=null&&cursor.Empty)cursor=null;
             GUI.matrix=Matrix4x4.Scale(new Vector3(scale,scale,1));tooltip="";UpdateTextFocus();
-            if(game.World==null&&screen!="settings")TitleScreen();
+            if(game.Ending)EndingScreen();
+            else if(game.World==null&&screen!="settings")TitleScreen();
             else if(screen=="settings")SettingsScreen();
             else
             {
@@ -121,7 +131,7 @@ namespace VoxelWilds
                 else if(IsOpen)InventoryScreen();
                 else if(game.Paused)PauseScreen();
             }
-            if(Time.unscaledTime<messageUntil)
+            if(!game.Ending&&Time.unscaledTime<messageUntil)
             {
                 Rect box=new Rect(width/2-330,28,660,60);Fill(box,new Color(.06f,.08f,.1f,.93f));Label(new Rect(box.x+16,box.y+9,box.width-32,44),message,text,TextAnchor.MiddleCenter);
             }
@@ -168,7 +178,7 @@ namespace VoxelWilds
             }
             if(Button(new Rect(left,621,155,43),"Settings")){previousScreen="title";screen="settings";}
             if(Button(new Rect(left+170,621,130,43),"Quit"))Application.Quit();
-            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.4",small,TextAnchor.MiddleRight);
+            Label(new Rect(width-355,647,320,36),"UNITY EDITION  /  2.0.6",small,TextAnchor.MiddleRight);
         }
         private void Hud()
         {
@@ -177,7 +187,6 @@ namespace VoxelWilds
             if(!IsOpen&&!game.Paused&&!player.Dead)
             {
                 Fill(new Rect(width/2-7,height/2-1,14,2),new Color(1,1,1,.85f));Fill(new Rect(width/2-1,height/2-7,2,14),new Color(1,1,1,.85f));
-                if(player.MiningProgress>0){Fill(new Rect(width/2-32,height/2+20,64,5),Ink);Fill(new Rect(width/2-32,height/2+20,64*Mathf.Clamp01(player.MiningProgress),5),Accent);}
             }
             for(int i=0;i<9;i++)Slot(new Rect(start+i*60,y,56,56),player.Inventory.Slots,i,false,i==player.Inventory.Selected);
             if(!player.IsCreative)
@@ -207,6 +216,88 @@ namespace VoxelWilds
             if(Button(new Rect(x,313,360,50),"Settings")){previousScreen="pause";screen="settings";}
             if(Button(new Rect(x,376,360,50),"Save world")){if(game.SaveWorld())Notify("World saved.");}
             if(Button(new Rect(x,439,360,50),"Save and return to title"))game.ReturnToTitle();
+        }
+        private void EndingScreen()
+        {
+            float elapsed=Time.unscaledTime-endingStarted,fade=Mathf.SmoothStep(0,1,Mathf.Clamp01(elapsed/.8f));
+            Color old=GUI.color;GUI.color=new Color(old.r,old.g,old.b,old.a*fade);
+            Fill(new Rect(0,0,width,height),new Color(.032f,.027f,.071f,fade));
+            for(int band=0;band<12;band++)
+            {
+                float start=height*.22f+band*height*.065f;
+                Fill(new Rect(0,start,width,height*.065f+1),Color.Lerp(new Color(.038f,.030f,.083f,fade),new Color(.13f,.069f,.16f,fade),band/11f));
+            }
+            for(int star=0;star<46;star++)
+            {
+                float x=((star*173+59)%997)/997f*width,y=((star*127+17)%397)/397f*height*.73f;
+                float size=star%7==0?3:2;
+                Fill(new Rect(x,y,size,size),new Color(.71f,.66f,.85f,(star%3==0?.5f:.22f)*fade));
+            }
+            DrawEndLandscape(fade);
+            float center=width*.5f,top=(height-536)*.5f;
+            Rect panel=new Rect(center-365,top,730,536);
+            Fill(new Rect(panel.x+7,panel.y+9,panel.width,panel.height),new Color(.012f,.011f,.025f,.24f*fade));
+            Fill(panel,new Color(.064f,.050f,.111f,.89f*fade));
+            Fill(new Rect(panel.x,panel.y,panel.width,1),new Color(.57f,.43f,.73f,.55f*fade));
+            Fill(new Rect(panel.x,panel.yMax-1,panel.width,1),new Color(.30f,.22f,.43f,.7f*fade));
+            Label(new Rect(center-300,top+28,600,25),"T H E   E N D   /   A   N E W   B E G I N N I N G",endingKicker,TextAnchor.MiddleCenter);
+            DrawEndCrystal(new Vector2(center,top+124),fade);
+            Label(new Rect(center-352,top+197,704,66),"DRAGON VANQUISHED",endingTitle,TextAnchor.MiddleCenter);
+            Fill(new Rect(center-28,top+278,56,2),new Color(.88f,.68f,.37f,fade));
+            Label(new Rect(center-288,top+299,576,62),"The dragon has fallen. The horizon is yours again.\nThere is still a whole world waiting to be shaped.",endingBody,TextAnchor.MiddleCenter);
+            Label(new Rect(center-305,top+373,610,30),endingWorldName??game.WorldName,small,TextAnchor.MiddleCenter);
+            EndingContinueRect=new Rect(center-298,top+427,288,49);
+            EndingTitleRect=new Rect(center+10,top+427,288,49);
+            bool enabled=GUI.enabled;GUI.enabled=enabled&&elapsed>=.5f;
+            if(EndingAction(EndingContinueRect,"Keep exploring",true,fade))game.ContinueAfterEnding();
+            if(EndingAction(EndingTitleRect,"Save & title",false,fade))game.ReturnToTitle();
+            GUI.enabled=enabled;
+            Label(new Rect(center-310,top+491,620,25),"Your story does not end here.",endingKicker,TextAnchor.MiddleCenter);
+            GUI.color=old;
+        }
+        private void DrawEndLandscape(float fade)
+        {
+            Color distant=new Color(.105f,.065f,.15f,fade),near=new Color(.037f,.032f,.076f,fade);
+            float ground=height*.85f;
+            for(int island=0;island<14;island++)
+            {
+                float x=island*width/13-30,y=ground+(island*43%71)-20,span=width/11;
+                Fill(new Rect(x,y,span,25),distant);Fill(new Rect(x+span*.12f,y+25,span*.73f,26),distant);Fill(new Rect(x+span*.28f,y+51,span*.42f,23),distant);
+            }
+            for(int pillar=0;pillar<5;pillar++)
+            {
+                float x=pillar<3?width*.045f+pillar*width*.07f:width*.81f+(pillar-3)*width*.095f;
+                float tower=70+(pillar*57%99),y=height-tower-30;
+                Fill(new Rect(x,y,27,tower),near);Fill(new Rect(x-4,y-7,35,8),near);
+                Fill(new Rect(x+11,y-15,6,7),new Color(.55f,.37f,.67f,.45f*fade));
+            }
+            Fill(new Rect(0,height-31,width,31),near);
+        }
+        private void DrawEndCrystal(Vector2 center,float fade)
+        {
+            Fill(new Rect(center.x-61,center.y+65,122,3),new Color(.43f,.28f,.59f,.40f*fade));
+            Fill(new Rect(center.x-44,center.y+68,88,5),new Color(.034f,.024f,.066f,.7f*fade));
+            for(int row=-25;row<=25;row++)
+            {
+                float span=(26-Mathf.Abs(row))*1.36f,y=center.y+row*2;
+                Fill(new Rect(center.x-span,y,span,2),new Color(.61f,.46f,.83f,fade));
+                Fill(new Rect(center.x,y,span,2),new Color(.34f,.24f,.56f,fade));
+            }
+            Fill(new Rect(center.x-2,center.y-38,2,72),new Color(.84f,.71f,.96f,.8f*fade));
+            Fill(new Rect(center.x-56,center.y-14,12,2),new Color(.90f,.72f,.42f,.7f*fade));
+            Fill(new Rect(center.x-51,center.y-19,2,12),new Color(.90f,.72f,.42f,.7f*fade));
+            Fill(new Rect(center.x+49,center.y+18,8,2),new Color(.90f,.72f,.42f,.7f*fade));
+            Fill(new Rect(center.x+52,center.y+15,2,8),new Color(.90f,.72f,.42f,.7f*fade));
+        }
+        private bool EndingAction(Rect rect,string label,bool primary,float fade)
+        {
+            bool hovered=GUI.enabled&&rect.Contains(Event.current.mousePosition);
+            Color edge=primary?new Color(.89f,.72f,.43f,fade):new Color(.40f,.32f,.51f,fade);
+            Color surface=primary?new Color(.32f,.23f,.12f,fade):new Color(.105f,.082f,.17f,fade);
+            if(hovered)surface=Color.Lerp(surface,edge,.25f);
+            Fill(rect,edge);Fill(Inset(rect,2),surface);
+            Fill(new Rect(rect.x+2,rect.y+rect.height-5,rect.width-4,3),new Color(0,0,0,.18f*fade));
+            return GUI.Button(rect,label,endingButton);
         }
         private void InventoryScreen()
         {

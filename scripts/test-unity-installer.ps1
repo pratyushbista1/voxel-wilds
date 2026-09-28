@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '2.0.4',
+    [string]$Version = '2.0.6',
     [switch]$SkipGame
 )
 $ErrorActionPreference = 'Stop'

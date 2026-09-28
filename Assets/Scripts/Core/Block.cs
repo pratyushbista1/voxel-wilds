@@ -69,20 +69,23 @@ namespace VoxelWilds.Core
         }
         public static float Hardness(Block id)
         {
-            if (IsBed(id)) return 0.3f;
+            if (IsBed(id)) return 0.2f;
             switch (id)
             {
-                case Block.Air: case Block.Water: return 0;
-                case Block.Bedrock: case Block.EndFrame: case Block.EndPortal: case Block.PortalX: case Block.PortalZ: case Block.Lava: return float.PositiveInfinity;
-                case Block.Obsidian: return 10; case Block.Spawner: return 5; case Block.Furnace: return 3.5f;
-                case Block.CrystalOre: case Block.GoldBlock: return 3; case Block.IronOre: return 2.4f;
-                case Block.Chest: return 2.5f; case Block.CoalOre: case Block.Basalt: case Block.NetherBricks: case Block.EndStone: return 2;
-                case Block.Stone: return 1.8f; case Block.Cobble: case Block.Blackstone: return 1.5f;
-                case Block.Bricks: return 1.4f; case Block.Log: return 1.2f;
-                case Block.Workbench: case Block.NetherGold: return 1;
-                case Block.Planks: case Block.Door: return 0.8f;
+                case Block.Air: case Block.Crop: case Block.NetherWart: case Block.Torch: return 0;
+                case Block.Bedrock: case Block.EndFrame: case Block.EndPortal: case Block.PortalX: case Block.PortalZ: case Block.Water: case Block.Lava: return float.PositiveInfinity;
+                case Block.Obsidian: return 50; case Block.Spawner: return 5;
+                case Block.Furnace: case Block.Lantern: return 3.5f;
+                case Block.CoalOre: case Block.IronOre: case Block.CrystalOre: case Block.NetherGold: case Block.GoldBlock: case Block.EndStone: case Block.Door: return 3;
+                case Block.Chest: case Block.Workbench: return 2.5f;
+                case Block.Cobble: case Block.Bricks: case Block.NetherBricks: case Block.Log: case Block.Planks: case Block.Campfire: return 2;
+                case Block.Stone: case Block.Blackstone: return 1.5f;
+                case Block.Basalt: return 1.25f;
+                case Block.Wool: return 0.8f;
+                case Block.Grass: case Block.Clay: case Block.Gravel: case Block.Farmland: return 0.6f;
+                case Block.Netherrack: return 0.4f;
                 case Block.Glass: case Block.Glowstone: return 0.3f; case Block.Leaves: return 0.2f;
-                case Block.Crop: case Block.NetherWart: case Block.Torch: return 0.1f;
+                case Block.Snow: return 0.2f;
                 default: return 0.5f;
             }
         }

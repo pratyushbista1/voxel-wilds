@@ -6,11 +6,12 @@ namespace VoxelWilds
 {
     public sealed class MobVisual : MonoBehaviour
     {
+        enum JointKind { Leg, Arm, WingTip, Wing, Tail, Head, Jaw, Crystal, Rod }
         sealed class Joint
         {
             public Transform Transform;
             public Quaternion Rest;
-            public string Name;
+            public JointKind Kind;
             public int Side;
             public int Index;
             public int GaitSign;
@@ -24,11 +25,14 @@ namespace VoxelWilds
         Vector3 restPosition;
         MobKind kind;
         float phase, stride, idlePhase;
+        float moveSpeed;
+        int appliedTint = -1;
         bool visible = true;
 
         public void Init(MobKind mobKind)
         {
             kind = mobKind;
+            moveSpeed = Mathf.Max(.1f, MobRules.Definition(kind).Speed);
             var prefab = Resources.Load<GameObject>("Models/" + MobRules.ModelName(kind));
             if (prefab != null)
             {
@@ -73,7 +77,7 @@ namespace VoxelWilds
                     int index = 0;
                     if (pieces.Length > 1) int.TryParse(pieces[1], out index);
                     joints.Add(new Joint {
-                        Transform = part, Rest = part.localRotation, Name = name, Side = index < 0 ? -1 : 1, Index = index,
+                        Transform = part, Rest = part.localRotation, Kind = ClassifyJoint(name), Side = index < 0 ? -1 : 1, Index = index,
                         GaitSign = MobRules.GaitSign(kind, name),
                         Right = part.parent.InverseTransformDirection(transform.right).normalized,
                         Up = part.parent.InverseTransformDirection(transform.up).normalized,
@@ -96,21 +100,22 @@ namespace VoxelWilds
         public void Animate(float dt, float speed, float attack, float hurt, float fuse, bool angry)
         {
             if (model == null) return;
-            stride = Mathf.Lerp(stride, Mathf.Clamp01(speed / Mathf.Max(.1f, MobRules.Definition(kind).Speed)), 1 - Mathf.Exp(-dt * 8));
+            stride = Mathf.Lerp(stride, Mathf.Clamp01(speed / moveSpeed), 1 - Mathf.Exp(-dt * 8));
             idlePhase += dt * (kind == MobKind.EndDragon ? 4 : 1.8f);
             phase += Mathf.Max(0, speed) * dt * (kind == MobKind.Chicken ? 7 : 4.2f);
             float attackArc = Mathf.Sin(Mathf.Clamp01(attack) * Mathf.PI);
+            float jointBlend = 1 - Mathf.Exp(-dt * 18);
             model.localPosition = restPosition + Vector3.up * (kind == MobKind.EndCrystal ? .08f * Mathf.Sin(idlePhase) : kind == MobKind.Blaze ? .09f * Mathf.Sin(idlePhase) : Mathf.Abs(Mathf.Sin(phase)) * stride * .012f);
             foreach (var joint in joints)
             {
                 float angle = 0;
                 Vector3 axis = joint.Right;
-                if (joint.Name.StartsWith("leg_"))
+                if (joint.Kind == JointKind.Leg)
                 {
                     angle = Mathf.Sin(phase) * joint.GaitSign * 32 * stride;
                     if (kind == MobKind.Spider) { axis = joint.Up; angle *= .65f; }
                 }
-                else if (joint.Name.StartsWith("arm_"))
+                else if (joint.Kind == JointKind.Arm)
                 {
                     angle = Mathf.Sin(phase + (joint.Side < 0 ? 0 : Mathf.PI)) * 23 * stride;
                     if (kind == MobKind.Zombie) angle = -78 + Mathf.Sin(idlePhase) * 2 + angle * .12f;
@@ -118,24 +123,41 @@ namespace VoxelWilds
                     if (kind == MobKind.Villager) angle = 0;
                     else angle -= attackArc * (joint.Side > 0 ? 70 : 20);
                 }
-                else if (joint.Name.StartsWith("wingtip_")) { axis = joint.Forward; angle = Mathf.Sin(idlePhase - .7f) * 24 * joint.Side; }
-                else if (joint.Name.StartsWith("wing_")) { axis = joint.Forward; angle = Mathf.Sin(idlePhase) * 36 * joint.Side; }
-                else if (joint.Name.StartsWith("tail_")) { axis = joint.Up; angle = Mathf.Sin(idlePhase * .5f - joint.Index * .6f) * 7; }
-                else if (joint.Name == "head_joint") { axis = joint.Up; angle = Mathf.Sin(idlePhase * .24f) * (angry ? 2 : 5); }
-                else if (joint.Name == "jaw") angle = 5 + attackArc * 25;
-                else if (joint.Name == "crystal_spin") { axis = joint.Up; angle = idlePhase * 28; }
-                else if (joint.Name.StartsWith("rod_")) { axis = joint.Up; angle = idlePhase * 35; }
+                else if (joint.Kind == JointKind.WingTip) { axis = joint.Forward; angle = Mathf.Sin(idlePhase - .7f) * 24 * joint.Side; }
+                else if (joint.Kind == JointKind.Wing) { axis = joint.Forward; angle = Mathf.Sin(idlePhase) * 36 * joint.Side; }
+                else if (joint.Kind == JointKind.Tail) { axis = joint.Up; angle = Mathf.Sin(idlePhase * .5f - joint.Index * .6f) * 7; }
+                else if (joint.Kind == JointKind.Head) { axis = joint.Up; angle = Mathf.Sin(idlePhase * .24f) * (angry ? 2 : 5); }
+                else if (joint.Kind == JointKind.Jaw) angle = 5 + attackArc * 25;
+                else if (joint.Kind == JointKind.Crystal) { axis = joint.Up; angle = idlePhase * 28; }
+                else if (joint.Kind == JointKind.Rod) { axis = joint.Up; angle = idlePhase * 35; }
                 Quaternion pose = Quaternion.AngleAxis(angle, axis) * joint.Rest;
-                joint.Transform.localRotation = Quaternion.Slerp(joint.Transform.localRotation, pose, 1 - Mathf.Exp(-dt * 18));
+                joint.Transform.localRotation = Quaternion.Slerp(joint.Transform.localRotation, pose, jointBlend);
             }
+            bool hurtTint = hurt > 0;
+            bool fuseTint = fuse > 0 && Mathf.Sin(fuse * 32) > 0;
+            int tint = (hurtTint ? 1 : 0) | (fuseTint ? 2 : 0);
+            if (appliedTint == tint) return;
+            appliedTint = tint;
             for (int i = 0; i < renderers.Count; i++)
             {
-                Color color = hurt > 0 ? Color.Lerp(colors[i], new Color(1, .13f, .11f), .65f) : colors[i];
-                if (fuse > 0 && Mathf.Sin(fuse * 32) > 0) color = Color.Lerp(color, Color.white, .8f);
+                Color color = hurtTint ? Color.Lerp(colors[i], new Color(1, .13f, .11f), .65f) : colors[i];
+                if (fuseTint) color = Color.Lerp(color, Color.white, .8f);
                 properties.SetColor("_Color", color);
                 properties.SetColor("_BaseColor", color);
                 renderers[i].SetPropertyBlock(properties);
             }
+        }
+        static JointKind ClassifyJoint(string name)
+        {
+            if (name.StartsWith("leg_")) return JointKind.Leg;
+            if (name.StartsWith("arm_")) return JointKind.Arm;
+            if (name.StartsWith("wingtip_")) return JointKind.WingTip;
+            if (name.StartsWith("wing_")) return JointKind.Wing;
+            if (name.StartsWith("tail_")) return JointKind.Tail;
+            if (name == "head_joint") return JointKind.Head;
+            if (name == "jaw") return JointKind.Jaw;
+            if (name == "crystal_spin") return JointKind.Crystal;
+            return JointKind.Rod;
         }
         public void SetVisible(bool visible)
         {

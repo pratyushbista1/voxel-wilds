@@ -35,7 +35,8 @@ namespace VoxelWilds
         public int Difficulty => save?.Difficulty??2;
         public int RenderDistance => Settings.ViewDistance;
         public bool EndDragonDefeated => save!=null&&save.EndDragonDefeated;
-        public bool Playing => World!=null&&!Paused&&!Sleeping&&Player!=null&&!Player.Dead;
+        public bool Playing => World!=null&&!Paused&&!Sleeping&&!Ending&&Player!=null&&!Player.Dead;
+        public bool Ending { get; private set; }
         public bool Paused { get; private set; }
         public bool Sleeping { get; private set; }
         public float DeathRemaining { get; private set; }
@@ -44,6 +45,8 @@ namespace VoxelWilds
         public string SaveDirectory { get; private set; }
         private SessionSave save;
         private string savePath;
+        private readonly BackgroundSaveWriter saveWriter=new BackgroundSaveWriter();
+        public bool SavingInBackground=>saveWriter.IsPending;
         private FluidSimulation fluids;
         private PortalSimulation portals;
         private Light sun;
@@ -79,6 +82,8 @@ namespace VoxelWilds
             if(Environment.GetCommandLineArgs().Contains("-voxel-visual-check"))gameObject.AddComponent<GraphicsSmoke>();
             if(Environment.GetCommandLineArgs().Contains("-voxel-interaction-check"))gameObject.AddComponent<InteractionSmoke>();
             if(Environment.GetCommandLineArgs().Contains("-voxel-inventory-check"))gameObject.AddComponent<InventorySmoke>();
+            if(Environment.GetCommandLineArgs().Contains("-voxel-performance-check"))gameObject.AddComponent<PerformanceSmoke>();
+            if(Environment.GetCommandLineArgs().Contains("-voxel-ending-check"))gameObject.AddComponent<EndingSmoke>();
         }
         public static string Argument(string key)
         {
@@ -93,6 +98,7 @@ namespace VoxelWilds
         }
         public void NewWorld(string name,int seed,bool creative)
         {
+            try { saveWriter.Flush(); } catch(Exception error){Notify("Could not finish the previous save: "+error.Message);return;}
             save=new SessionSave{Name=string.IsNullOrWhiteSpace(name)?"New world":name.Trim(),Seed=seed,Creative=creative};
             savePath=Path.Combine(SaveDirectory,"world-"+Guid.NewGuid().ToString("N")+".vws");
             StartSavedWorld();SaveWorld();
@@ -101,6 +107,7 @@ namespace VoxelWilds
         {
             try
             {
+                saveWriter.Flush();
                 string full=Path.GetFullPath(path);if(!full.StartsWith(Path.GetFullPath(SaveDirectory)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("World is outside the save directory.");
                 var candidate=JsonUtility.FromJson<SessionSave>(SaveFile.Read(full,out bool recovered));Validate(candidate);
                 save=candidate;savePath=full;StartSavedWorld();if(recovered)Notify("Recovered the world from its last valid backup.");
@@ -126,6 +133,7 @@ namespace VoxelWilds
         private static void ValidateStack(ItemStack stack){if(stack!=null&&!stack.Empty&&(!Items.Exists(stack.Id)||stack.Count>Items.MaxStack(stack.Id)||stack.Count<0||stack.Durability<0||stack.Durability>Items.Durability(stack.Id)))throw new FormatException("Invalid item stack.");}
         private void StartSavedWorld()
         {
+            Ending=false;
             Hud.Close();Player.Inventory=save.Inventory;Player.IsCreative=save.Creative;Player.Health=Mathf.Clamp(save.Health,0,20);Player.Hunger=Mathf.Clamp(save.Hunger,0,20);Player.Saturation=Mathf.Clamp(save.Saturation,0,20);
             Player.Pitch=save.Pitch;Player.transform.rotation=Quaternion.Euler(0,save.Yaw,0);
             LoadDimension((Dimension)save.Dimension,new Vector3(save.X,save.Y,save.Z));
@@ -167,9 +175,15 @@ namespace VoxelWilds
         }
         private void Update()
         {
+            if(saveWriter.TryComplete(out Exception saveError))
+            {
+                LastSaveError=saveError?.Message;
+                if(saveError!=null)Notify("Autosave failed. Your previous save is retained: "+saveError.Message);
+            }
             if(World==null)return;
             float dt=Mathf.Min(Time.deltaTime,.1f);
             if(Input.GetKeyDown(KeyCode.F11)){Settings.Fullscreen=!Settings.Fullscreen;ApplySettings();}
+            if(Ending){if(Input.GetKeyDown(KeyCode.Escape))ContinueAfterEnding();return;}
             if(Input.GetKeyDown(KeyCode.Escape))
             {
                 if(Sleeping){Sleeping=false;LockCursor();}
@@ -184,7 +198,7 @@ namespace VoxelWilds
             if(!Playing)return;
             save.Day=Mathf.Repeat(save.Day+dt/1200,1);UpdateSky();Renderer.Tick(Player.transform.position,Settings.ViewDistance);fluids.Tick(dt,512);
             foreach(var pair in containers)if(pair.Value.Furnace!=null&&World.GetBlock(pair.Key)==Block.Furnace)pair.Value.Furnace.Tick(dt);
-            portals.Tick();portalCooldown-=dt;CheckPortal(dt);autosave+=dt;if(autosave>=20){autosave=0;SaveWorld();}
+            portals.Tick();portalCooldown-=dt;CheckPortal(dt);autosave+=dt;if(autosave>=20){autosave=0;RequestAutosave();}
         }
         private void UpdateSky()
         {
@@ -225,8 +239,8 @@ namespace VoxelWilds
             if(clouds)Destroy(clouds);clouds=new GameObject("Clouds");
             for(int i=0;i<24;i++){var box=GameObject.CreatePrimitive(PrimitiveType.Cube);box.GetComponent<Collider>().enabled=false;Destroy(box.GetComponent<Collider>());box.transform.SetParent(clouds.transform,false);box.transform.localPosition=new Vector3((i%6)*35-87,Mathf.Sin(i*2)*1.5f,(i/6)*44-66);box.transform.localScale=new Vector3(13+i%3*5,1.3f+i%2,7+i%5);var renderer=box.GetComponent<Renderer>();renderer.sharedMaterial=cloudMaterial;renderer.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;}
         }
-        public void SetPaused(bool paused){if(Player.Dead)return;Paused=paused;if(paused){Hud.Close();SaveWorld();}LockCursor();}
-        public void LockCursor(){bool locked=World!=null&&!Paused&&!Sleeping&&!Player.Dead&&!Hud.IsOpen;Cursor.lockState=locked?CursorLockMode.Locked:CursorLockMode.None;Cursor.visible=!locked;}
+        public void SetPaused(bool paused){if(Player.Dead||Ending)return;Paused=paused;if(paused){Hud.Close();SaveWorld();}LockCursor();}
+        public void LockCursor(){bool locked=World!=null&&!Paused&&!Sleeping&&!Ending&&!Player.Dead&&!Hud.IsOpen;Cursor.lockState=locked?CursorLockMode.Locked:CursorLockMode.None;Cursor.visible=!locked;}
         public void Notify(string message){if(Hud!=null)Hud.Notify(message);Debug.Log(message);}
         public void SetDifficulty(int difficulty){if(save!=null)save.Difficulty=Mathf.Clamp(difficulty,0,3);}
         public bool SaveWorld()
@@ -234,10 +248,21 @@ namespace VoxelWilds
             if(World==null||save==null)return true;
             try
             {
-                CaptureDimension();save.Inventory=Player.Inventory;save.TransientItems=Hud.CaptureTransient();save.X=Player.transform.position.x;save.Y=Player.transform.position.y;save.Z=Player.transform.position.z;save.Yaw=Player.transform.eulerAngles.y;save.Pitch=Player.Pitch;save.Health=Player.Health;save.Hunger=Player.Hunger;save.Saturation=Player.Saturation;
-                Validate(save);SaveFile.Write(savePath,JsonUtility.ToJson(save));LastSaveError=null;return true;
+                try { saveWriter.Flush(); } catch(Exception error){Debug.LogWarning("Retrying failed autosave: "+error.Message);}
+                SaveFile.Write(savePath,CaptureSavePayload());LastSaveError=null;return true;
             }
             catch(Exception error){LastSaveError=error.Message;Notify("Save failed. Keep the game open: "+error.Message);return false;}
+        }
+        private string CaptureSavePayload()
+        {
+            CaptureDimension();save.Inventory=Player.Inventory;save.TransientItems=Hud.CaptureTransient();save.X=Player.transform.position.x;save.Y=Player.transform.position.y;save.Z=Player.transform.position.z;save.Yaw=Player.transform.eulerAngles.y;save.Pitch=Player.Pitch;save.Health=Player.Health;save.Hunger=Player.Hunger;save.Saturation=Player.Saturation;
+            Validate(save);return JsonUtility.ToJson(save);
+        }
+        public bool RequestAutosave()
+        {
+            if(World==null||save==null||saveWriter.IsPending)return false;
+            try { return saveWriter.Begin(savePath,CaptureSavePayload()); }
+            catch(Exception error){LastSaveError=error.Message;Notify("Autosave failed: "+error.Message);return false;}
         }
         private void CaptureDimension()
         {
@@ -248,8 +273,8 @@ namespace VoxelWilds
             foreach(var drop in drops)if(drop!=null&&drop.Stack!=null&&!drop.Stack.Empty)state.Drops.Add(new DropSave{X=drop.transform.position.x,Y=drop.transform.position.y,Z=drop.transform.position.z,Life=drop.Life,Stack=drop.Stack.Clone()});
             save.Dimensions.RemoveAll(x=>x.Id==state.Id);save.Dimensions.Add(state);
         }
-        public void ReturnToTitle(){Hud.Close();if(!SaveWorld())return;fluids?.Dispose();portals?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop)Destroy(drop.gameObject);drops.Clear();Player.gameObject.SetActive(false);World=null;Paused=false;Hud.ShowTitle();Cursor.lockState=CursorLockMode.None;Cursor.visible=true;}
-        public void Die(){Hud.Close();DeathRemaining=3;Sleeping=false;Paused=false;foreach(var item in Player.Inventory.TakeAll())DropStack(Player.transform.position+Vector3.up,item);SaveWorld();LockCursor();}
+        public void ReturnToTitle(){Hud.Close();if(!SaveWorld())return;Ending=false;fluids?.Dispose();portals?.Dispose();Mobs.Clear();Renderer.Clear();foreach(var drop in drops)if(drop)Destroy(drop.gameObject);drops.Clear();Player.gameObject.SetActive(false);World=null;Paused=false;Hud.ShowTitle();Cursor.lockState=CursorLockMode.None;Cursor.visible=true;}
+        public void Die(){Hud.Close();if(Ending){Ending=false;Hud.ShowGame();}DeathRemaining=3;Sleeping=false;Paused=false;foreach(var item in Player.Inventory.TakeAll())DropStack(Player.transform.position+Vector3.up,item);SaveWorld();LockCursor();}
         private void Respawn()
         {
             Hud.Close();CaptureDimension();Vector3 destination=new Vector3(8.5f,33.1f,8.5f);
@@ -322,7 +347,11 @@ namespace VoxelWilds
         }
         public void BreakBlock(Cell target)
         {
-            Block id=World.GetBlock(target);if(float.IsInfinity(Blocks.Hardness(id)))return;
+            Block id=World.GetBlock(target);
+            if(id==Block.Air||Blocks.IsFluid(id)||id==Block.PortalX||id==Block.PortalZ||id==Block.EndPortal
+                ||!Player.IsCreative&&float.IsInfinity(Blocks.Hardness(id)))return;
+            if(id==Block.Chest&&!containers.ContainsKey(target))Container(target);
+            Player.BreakParticles?.Burst(target,World.Get(target));
             Voxel supported=World.Get(target.Up);
             if(id!=Block.Door&&supported.Id==Block.Door&&!DoorRules.IsUpper(supported))BreakBlock(target.Up);
             if(containers.TryGetValue(target,out var box))
@@ -334,7 +363,7 @@ namespace VoxelWilds
             if(id==Block.Door)DoorRules.Remove(World,target);else World.Set(target,Block.Air);
             if(!Player.IsCreative&&Items.CanHarvest(Player.Inventory.Held?.Id??0,id))
             {
-                int drop=Blocks.Drop(id),count=id==Block.Clay?4:1;
+                int drop=Blocks.Drop(id),count=id==Block.Clay?4:id==Block.NetherGold?UnityEngine.Random.Range(2,7):1;
                 if(id==Block.Crop){drop=Items.Wheat;DropLoot(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),Items.Seeds,2);}
                 if(id==Block.Gravel&&UnityEngine.Random.value<.1f)drop=Items.Flint;
                 if(drop>0)DropLoot(new Vector3(target.X+.5f,target.Y+.5f,target.Z+.5f),drop,count);
@@ -349,7 +378,7 @@ namespace VoxelWilds
             else
             {
                 container.Slots=new ItemStack[27];var marker=World.Markers.FirstOrDefault(m=>m.Position==p&&m.Kind=="chest");
-                if(marker.Kind=="chest")
+                if(marker.Kind=="chest"&&!World.Edits.Any(edit=>edit.Key==p))
                 {
                     container.Slots[0]=new ItemStack(Items.Bread,4);container.Slots[1]=new ItemStack(Items.IronIngot,3);container.Slots[2]=new ItemStack(Items.Coal,6);container.Slots[3]=new ItemStack(Items.Seeds,8);
                     if(marker.Mob=="bastion"||marker.Mob=="fortress"){container.Slots[4]=new ItemStack(Items.GoldIngot,8);container.Slots[5]=new ItemStack(Items.Crystal,2);container.Slots[6]=new ItemStack(Items.IronSword);}
@@ -468,7 +497,22 @@ namespace VoxelWilds
                 World.Set(frame.At(x,y)+new Cell(frame.AlongX?0:depth,0,frame.AlongX?depth:0),y==0?Block.Obsidian:Block.Air);
             for(int y=0;y<=4;y++)for(int x=0;x<=3;x++)World.Set(frame.At(x,y),x==0||x==3||y==0||y==4?Block.Obsidian:frame.Portal);
         }
-        public void DefeatDragon(){save.EndDragonDefeated=true;Notify("The dragon has fallen. The exit portal is open.");SaveWorld();}
+        public void DefeatDragon()
+        {
+            if(save==null||save.EndDragonDefeated)return;
+            save.EndDragonDefeated=true;
+            if(World.Dimension==Dimension.End&&!Player.Dead)
+            {
+                Ending=true;Paused=false;Sleeping=false;Player.ResetMining();Player.View.ResetMotion();Hud.ShowEnding();
+            }
+            else Notify("The dragon has fallen. The exit portal is open.");
+            SaveWorld();LockCursor();
+        }
+        public void ContinueAfterEnding()
+        {
+            if(!Ending)return;
+            Ending=false;Paused=false;Hud.ShowGame();LockCursor();
+        }
         public void Explode(Vector3 position,float radius)
         {
             Cell center=PlayerController.ToCell(position);

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.6
+
+- Added an original dragon-victory screen with keep-exploring and save-to-title actions.
+- Spread chunk meshing across frames, cached neighboring voxels, reused mesh buffers and prioritized nearby block edits.
+- Moved autosave disk writes off the game thread while keeping explicit saves ordered and checked.
+- Removed repeated targeting, outline, particle and mob-animation work without reducing visual quality.
+- Added native performance, mesh-parity, ending-screen and background-save checks.
+
+## 2.0.5
+
+- Replaced the mining progress bar with ten stages of original pixel cracks on block surfaces.
+- Added textured hit chips and breaking fragments, and a more rotational tool swing with a distinct bare-hand punch.
+- Corrected supported block hardness, tool effectiveness, interrupted mining, Creative breaking and airborne/underwater mining penalties.
+- Prevented melee attacks through the targeted block and unrelated tool damage from instant-break plants and torches.
+- Preserved unopened generated chest loot, prevented replacement chests from regenerating loot, and corrected Nether gold nugget yields.
+- Added mining, crack-rendering, hand-animation and loot regression checks.
+
 ## 2.0.4
 
 - Removed free starter food, logs and tools from new worlds while preserving existing inventories.

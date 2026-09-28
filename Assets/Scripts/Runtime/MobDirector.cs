@@ -21,9 +21,11 @@ namespace VoxelWilds
         readonly List<MobProjectile> projectiles = new List<MobProjectile>();
         readonly Dictionary<Cell, SpawnerState> spawners = new Dictionary<Cell, SpawnerState>();
         readonly HashSet<string> consumedMarkers = new HashSet<string>();
+        readonly List<string> markerKeys = new List<string>();
         readonly Dictionary<Cell, byte> blockLight = new Dictionary<Cell, byte>();
         readonly Queue<Cell> lightQueue = new Queue<Cell>();
         readonly HashSet<Cell> lightVolumes = new HashSet<Cell>();
+        static readonly MobKind[] nightMobs = { MobKind.Zombie, MobKind.Skeleton, MobKind.Creeper, MobKind.Spider, MobKind.Enderman };
         GameSession game;
         World observedWorld;
         float scanTimer, spawnTimer;
@@ -52,14 +54,29 @@ namespace VoxelWilds
             game = session;
             observedWorld = game.World;
             observedWorld.Changed += OnBlockChanged;
+            observedWorld.ChunkGenerated += OnChunkGenerated;
             foreach (var edit in observedWorld.Edits) if (edit.Value.Id == Block.Spawner) RegisterSpawner(edit.Key);
             scanTimer = 0;
             spawnTimer = .5f;
         }
-        void OnDestroy() { if (observedWorld != null) observedWorld.Changed -= OnBlockChanged; }
+        void OnDestroy()
+        {
+            if (observedWorld == null) return;
+            observedWorld.Changed -= OnBlockChanged;
+            observedWorld.ChunkGenerated -= OnChunkGenerated;
+        }
+        void OnChunkGenerated(int x, int z)
+        {
+            foreach (var center in lightVolumes)
+                if (x >= World.FloorDiv(center.X - 18, World.ChunkSize) && x <= World.FloorDiv(center.X + 18, World.ChunkSize)
+                    && z >= World.FloorDiv(center.Z - 18, World.ChunkSize) && z <= World.FloorDiv(center.Z + 18, World.ChunkSize))
+                { blockLight.Clear(); lightVolumes.Clear(); break; }
+        }
         void OnBlockChanged(Cell cell)
         {
-            blockLight.Clear(); lightVolumes.Clear();
+            foreach (var center in lightVolumes)
+                if (Math.Abs(center.X - cell.X) <= 18 && Math.Abs(center.Z - cell.Z) <= 18 && Math.Abs(center.Y - cell.Y) <= 17)
+                { blockLight.Clear(); lightVolumes.Clear(); break; }
             if (observedWorld.GetBlock(cell) == Block.Spawner) RegisterSpawner(cell);
             else spawners.Remove(cell);
         }
@@ -70,11 +87,15 @@ namespace VoxelWilds
         }
         public void Clear()
         {
-            if (observedWorld != null) observedWorld.Changed -= OnBlockChanged;
+            if (observedWorld != null)
+            {
+                observedWorld.Changed -= OnBlockChanged;
+                observedWorld.ChunkGenerated -= OnChunkGenerated;
+            }
             observedWorld = null;
             foreach (var actor in actors) if (actor != null) Destroy(actor.gameObject);
             foreach (var projectile in projectiles) if (projectile != null) Destroy(projectile.gameObject);
-            actors.Clear(); projectiles.Clear(); spawners.Clear(); consumedMarkers.Clear(); blockLight.Clear(); lightVolumes.Clear(); lightQueue.Clear();
+            actors.Clear(); projectiles.Clear(); spawners.Clear(); consumedMarkers.Clear(); markerKeys.Clear(); blockLight.Clear(); lightVolumes.Clear(); lightQueue.Clear();
         }
         void Update()
         {
@@ -87,6 +108,7 @@ namespace VoxelWilds
             if (spawnTimer <= 0) { SpawnAmbient(); spawnTimer = 5; }
             for (int i = actors.Count - 1; i >= 0; i--)
             {
+                if (!game.Playing) break;
                 var actor = actors[i];
                 if (actor == null || actor.Dead) { if (actor != null) Destroy(actor.gameObject); actors.RemoveAt(i); continue; }
                 actor.Tick(dt);
@@ -95,6 +117,7 @@ namespace VoxelWilds
             }
             for (int i = projectiles.Count - 1; i >= 0; i--)
             {
+                if (!game.Playing) break;
                 if (projectiles[i] == null || !projectiles[i].Tick(dt))
                 { if (projectiles[i] != null) Destroy(projectiles[i].gameObject); projectiles.RemoveAt(i); }
             }
@@ -103,6 +126,11 @@ namespace VoxelWilds
         {
             Vector3 player = game.Player.transform.position;
             int count = game.World.Markers.Count;
+            while (markerKeys.Count < count)
+            {
+                var marker = game.World.Markers[markerKeys.Count];
+                markerKeys.Add(marker.Kind == "spawner" ? null : marker.Kind + ":" + marker.Position);
+            }
             for (int i = 0; i < count; i++)
             {
                 var marker = game.World.Markers[i];
@@ -113,7 +141,7 @@ namespace VoxelWilds
                     if (game.World.GetBlock(marker.Position) == Block.Spawner) RegisterSpawner(marker.Position, MobRules.Parse(marker.Mob));
                     continue;
                 }
-                string key = marker.Kind + ":" + marker.Position;
+                string key = markerKeys[i];
                 if (consumedMarkers.Contains(key)) continue;
                 MobKind kind;
                 if (marker.Kind == "crystal") kind = MobKind.EndCrystal;
@@ -129,13 +157,16 @@ namespace VoxelWilds
         }
         void UpdateSpawners(float dt)
         {
-            if (game.Player.Dead) return;
+            if (game.Player.Dead || game.Difficulty == 0) return;
+            Vector3 playerPosition = game.Player.transform.position;
             foreach (var entry in spawners)
             {
                 var spawner = entry.Value;
                 Vector3 center = Position(spawner.Position);
+                float distanceSquared = (center - playerPosition).sqrMagnitude;
+                if (distanceSquared > 16 * 16) continue;
                 int nearby = CountNear(center, 9, spawner.Kind);
-                if (!MobRules.CanSpawnerActivate(Vector3.Distance(center, game.Player.transform.position), nearby, game.Difficulty)) continue;
+                if (!MobRules.CanSpawnerActivate(Mathf.Sqrt(distanceSquared), nearby, game.Difficulty)) continue;
                 spawner.Delay -= dt;
                 if (spawner.Delay > 0) continue;
                 if (spawner.Kind != MobKind.Blaze) PrepareLight(spawner.Position);
@@ -216,8 +247,7 @@ namespace VoxelWilds
                 else if (MobRules.IsNight(game.TimeOfDay) && game.Difficulty > 0)
                 {
                     if (CountHostile() >= 20) return;
-                    MobKind[] hostiles = { MobKind.Zombie, MobKind.Skeleton, MobKind.Creeper, MobKind.Spider, MobKind.Enderman };
-                    kind = hostiles[Random.Range(0, hostiles.Length)];
+                    kind = nightMobs[Random.Range(0, nightMobs.Length)];
                 }
                 else
                 {
@@ -330,9 +360,14 @@ namespace VoxelWilds
             float distance = Vector3.Distance(start, end);
             int steps = Mathf.CeilToInt(distance * 5);
             var ray = new Ray(start, (end - start).normalized);
+            Cell previous = default;
+            bool sampled = false;
             for (int i = 1; i < steps; i++)
             {
                 Cell cell = CellAt(Vector3.Lerp(start, end, i / (float)steps));
+                if (sampled && cell == previous) continue;
+                previous = cell;
+                sampled = true;
                 if (BlockShape.BlocksRay(cell, game.World.Get(cell), ray, distance)) return false;
             }
             return true;

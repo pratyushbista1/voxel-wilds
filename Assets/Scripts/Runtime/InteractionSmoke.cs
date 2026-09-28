@@ -81,6 +81,7 @@ namespace VoxelWilds
             yield return FirstPersonChecks();
             yield return DoorChecks();
             yield return MobChecks();
+            yield return MiningChecks();
             Require(game.SaveWorld() && game.LastSaveError == null, "Interaction fixtures save without errors");
         }
 
@@ -172,16 +173,45 @@ namespace VoxelWilds
             view.ResetMotion();
             Vector3 restPosition = view.HandLocalPosition;
             Quaternion restRotation = view.HandLocalRotation;
+            Quaternion restToolRotation = view.HeldVisual.rotation;
             view.TriggerSwing(FirstPersonView.Action.Attack);
             Advance(view, .07f);
+            Quaternion windupToolRotation = view.HeldVisual.rotation;
+            Require(Quaternion.Angle(restToolRotation, windupToolRotation) > 40,
+                "A held tool visibly rotates through its swing rather than sliding across the screen");
+            float activeProgress = view.SwingProgress;
+            view.TriggerSwing(FirstPersonView.Action.Use);
+            Require(Mathf.Approximately(view.SwingProgress, activeProgress), "A repeated action cannot restart an unfinished swing");
             yield return Capture("08-attack-windup.png");
             Advance(view, .09f);
+            Vector3 strikePosition = view.HandLocalPosition;
+            Quaternion strikeToolRotation = view.HeldVisual.rotation;
             yield return Capture("09-attack-strike.png");
             Advance(view, .09f);
+            Require(view.HandLocalPosition.y > strikePosition.y + .02f,
+                "The downward strike lifts back toward rest during recovery");
+            Require(Quaternion.Angle(strikeToolRotation, view.HeldVisual.rotation) > 20
+                && Quaternion.Angle(restToolRotation, view.HeldVisual.rotation) < Quaternion.Angle(restToolRotation, windupToolRotation),
+                "Tool recovery has a distinct rotational pose and approaches its resting angle");
             yield return Capture("10-attack-recovery.png");
             for (int i = 0; i < 30; i++) Advance(view);
             Require(!view.IsSwinging && Vector3.Distance(restPosition, view.HandLocalPosition) < .001f
                 && Quaternion.Angle(restRotation, view.HandLocalRotation) < .1f, "An attack returns precisely to the neutral hand pose");
+            Require(Quaternion.Angle(restToolRotation, view.HeldVisual.rotation) < .1f,
+                "Finishing the swing resets both the hand and the tool grip");
+
+            view.ResetMotion();
+            view.TriggerSwing(FirstPersonView.Action.Mine);
+            for (int i = 0; i < 9; i++) Advance(view, 1f / 60);
+            Vector3 sixtyHzPosition = view.HandLocalPosition;
+            Quaternion sixtyHzToolRotation = view.HeldVisual.rotation;
+            view.ResetMotion();
+            view.TriggerSwing(FirstPersonView.Action.Mine);
+            for (int i = 0; i < 18; i++) Advance(view, 1f / 120);
+            Require(Vector3.Distance(sixtyHzPosition, view.HandLocalPosition) < .001f
+                && Quaternion.Angle(sixtyHzToolRotation, view.HeldVisual.rotation) < .1f,
+                "Mining reaches the same hand and tool pose at 60 and 120 frames per second");
+            view.ResetMotion();
 
             stage = "view bobbing and teleport reset";
             MethodInfo animate = typeof(PlayerController).GetMethod("AnimateHand", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -209,6 +239,17 @@ namespace VoxelWilds
             game.Player.Inventory.Slots[0] = null;
             for (int i = 0; i < 30; i++) Advance(view);
             Require(view.PresentedItem == 0 && view.HeldVisual == null && view.HandVisible, "Unequipping removes only the item and keeps the character's hand");
+            view.ResetMotion();
+            Vector3 bareRestPosition = view.HandLocalPosition;
+            Quaternion bareRestRotation = view.HandLocalRotation;
+            view.TriggerSwing(FirstPersonView.Action.Mine);
+            Advance(view, .075f);
+            Require(view.HandLocalPosition.z > bareRestPosition.z + .1f
+                && Quaternion.Angle(bareRestRotation, view.HandLocalRotation) > 20,
+                "Empty-hand mining punches forward with an arm rotation instead of using the held-tool slide");
+            for (int i = 0; i < 30; i++) Advance(view);
+            Require(!view.IsSwinging && Vector3.Distance(bareRestPosition, view.HandLocalPosition) < .001f,
+                "A bare-hand punch finishes at its neutral position");
         }
 
         private static void Advance(FirstPersonView view, float dt = .02f) => view.Advance(dt, 0, false, Vector2.zero, false, 0, false);
@@ -223,6 +264,127 @@ namespace VoxelWilds
                 if (Math.Abs(a[index].r - b[index].r) + Math.Abs(a[index].g - b[index].g) + Math.Abs(a[index].b - b[index].b) > 24) changed++;
             }
             return changed;
+        }
+
+        private IEnumerator MiningChecks()
+        {
+            stage = "block cracking and mining";
+            PlayerController player = game.Player;
+            Cell target = new Cell(13, 34, 8);
+            player.Teleport(new Vector3(13.5f, 33.08f, 4.5f));
+            player.BreakParticles.Clear();
+            FacePoint(new Vector3(13.5f, 34.5f, 8.5f));
+            game.World.Set(target, Block.Stone);
+            player.Inventory.Selected = 0;
+            player.Inventory.Slots[0] = new ItemStack(Items.WoodenPickaxe);
+            for (int i = 0; i < 30; i++) Advance(player.View);
+            game.Renderer.EnsureImmediate(player.transform.position);
+            for (int i = 0; i < 12; i++) { game.Renderer.Tick(player.transform.position, 3); yield return null; }
+            BlockBreakOverlay overlay = player.BreakOverlay;
+            Require(overlay != null, "Player owns a world-space block crack overlay");
+            Require(Shader.Find("VoxelWilds/BlockBreakOverlay").isSupported, "Block crack shader compiles for the graphics device");
+            overlay.Init(game.World);
+            overlay.Hide();
+            yield return Capture("11-mining-unbroken.png");
+            Color32[] unbroken = lastImage;
+            int previousPixels = 0;
+            for (int step = 0; step < 10; step++)
+            {
+                Texture2D texture = overlay.TextureForStage(step);
+                Color32[] pixels = texture.GetPixels32();
+                int marked = pixels.Count(p => p.a > 0);
+                Require(texture.filterMode == FilterMode.Point && marked > previousPixels && marked < pixels.Length,
+                    "Crack stage " + step + " adds pixel fissures without covering the entire surface");
+                previousPixels = marked;
+            }
+            overlay.Show(target, game.World.Get(target), .05f);
+            Require(overlay.IsVisible && overlay.Stage == 0 && overlay.FaceCount == 6, "Early mining wraps exposed block faces in its first crack stage");
+            yield return Capture("12-mining-first-cracks.png");
+            Require(ChangedPixels(unbroken, lastImage, false) > 20, "Early cracks visibly alter the targeted block");
+            overlay.Show(target, game.World.Get(target), .45f);
+            Require(overlay.Stage == 4, "Half-mined block uses the matching discrete crack stage");
+            yield return Capture("13-mining-middle-cracks.png");
+            Color32[] middle = lastImage;
+            overlay.Show(target, game.World.Get(target), .95f);
+            Require(overlay.Stage == 9, "Nearly broken block uses the final crack stage");
+            yield return Capture("14-mining-final-cracks.png");
+            Require(ChangedPixels(middle, lastImage, false) > 100, "Late cracks visibly spread beyond the middle-stage pattern");
+            overlay.Hide();
+            Require(!overlay.IsVisible && overlay.Stage == -1, "Cancelling mining removes the crack overlay immediately");
+            player.BreakParticles.Burst(target, game.World.Get(target));
+            game.World.Set(target, Block.Air);
+            game.Renderer.EnsureImmediate(player.transform.position);
+            Require(player.BreakParticles.ActiveCount == 64, "A broken block emits a bounded burst of textured fragments");
+            yield return Capture("15-mining-fragments.png");
+            for (int i = 0; i < 4; i++) player.BreakParticles.Burst(target, new Voxel(Block.Stone));
+            Require(player.BreakParticles.ActiveCount == BlockBreakParticles.Capacity, "Repeated block destruction reuses the capped fragment pool");
+            player.BreakParticles.Clear();
+            Require(player.BreakParticles.ActiveCount == 0, "Clearing a world discards old mining fragments");
+
+            game.World.Set(target, Block.BedEast);
+            overlay.Show(target, game.World.Get(target), .5f);
+            Require(Mathf.Abs(overlay.SurfaceBounds.size.y - BedRules.Height) < .02f, "Bed cracks conform to the partial-height bed surface");
+            game.World.Set(target, Block.Door, DoorRules.State(1));
+            overlay.Show(target, game.World.Get(target), .5f);
+            Require(Mathf.Min(overlay.SurfaceBounds.size.x, overlay.SurfaceBounds.size.z) < .21f, "Door cracks conform to the thin door instead of filling its cell");
+            overlay.Hide();
+
+            player.IsCreative = false;
+            player.Inventory.Slots[0] = null;
+            game.World.Set(target, Block.Log);
+            player.ResetMining();
+            for (int i = 0; i < 8; i++) player.StepMining(.1f, true, true, target, true, false);
+            Require(player.MiningProgress > .2f && overlay.IsVisible && game.World.GetBlock(target) == Block.Log,
+                "Normal Survival mining advances damage and displays cracks before removing a log");
+            player.StepMining(.05f, false, true, target, true, false);
+            Require(player.MiningProgress == 0 && !overlay.IsVisible, "Releasing mine clears both progress and the visual damage");
+            for (int i = 0; i < 8; i++) player.StepMining(.1f, true, true, target, true, false);
+            float beforeSwitch = player.MiningProgress;
+            player.Inventory.Slots[0] = new ItemStack(Items.IronAxe);
+            player.StepMining(.05f, true, true, target, true, false);
+            Require(player.MiningProgress < beforeSwitch, "Switching the held tool restarts block damage");
+            player.ResetMining();
+            int durability = player.Inventory.Held.Durability;
+            int logs = DroppedCount((int)Block.Log);
+            bool broken = false;
+            for (int i = 0; i < 40 && !broken; i++) broken = player.StepMining(.05f, true, true, target, true, false);
+            Require(broken && game.World.GetBlock(target) == Block.Air && !overlay.IsVisible, "Completing mining removes the block and clears its crack mesh");
+            Require(player.Inventory.Held.Durability == durability - 1 && DroppedCount((int)Block.Log) == logs + 1,
+                "Breaking one log drops one item and uses exactly one axe durability");
+            game.World.Set(target, Block.Bedrock);
+            player.ResetMining();
+            player.StepMining(.1f, true, true, target, true, false);
+            Require(player.MiningProgress == 0 && !overlay.IsVisible && game.World.GetBlock(target) == Block.Bedrock,
+                "Unbreakable Survival blocks never gain cracks or break");
+            player.IsCreative = true;
+            player.ResetMining();
+            Require(player.StepMining(.05f, true, true, target, true, false) && game.World.GetBlock(target) == Block.Air,
+                "Creative removes bedrock immediately without a progress animation");
+            game.World.Set(target, Block.Stone);
+            player.Inventory.Slots[0] = new ItemStack(Items.IronSword);
+            player.ResetMining();
+            Require(!player.StepMining(.1f, true, true, target, true, false) && game.World.GetBlock(target) == Block.Stone,
+                "Creative sword swings do not accidentally destroy blocks");
+            player.ResetMining();
+            player.Inventory.Slots[0] = null;
+            game.World.Set(target, Block.Air);
+            game.World.GetBlock(new Cell(40, 32, 40));
+            var marker = game.World.Markers.First(m => m.Kind == "chest" && m.Mob != "bastion" && m.Mob != "fortress");
+            int bread = DroppedCount(Items.Bread);
+            game.BreakBlock(marker.Position);
+            Require(DroppedCount(Items.Bread) == bread + 4, "Breaking an unopened generated chest preserves its loot");
+            game.World.Set(marker.Position, Block.Chest);
+            game.BreakBlock(marker.Position);
+            Require(DroppedCount(Items.Bread) == bread + 4, "Replacing a generated chest cannot regenerate its original loot");
+            player.IsCreative = false;
+            player.Inventory.Slots[0] = new ItemStack(Items.IronPickaxe);
+            game.World.Set(target, Block.NetherGold);
+            int nuggets = DroppedCount(Items.GoldNugget);
+            game.BreakBlock(target);
+            int nuggetYield = DroppedCount(Items.GoldNugget) - nuggets;
+            Require(nuggetYield >= 2 && nuggetYield <= 6, "Nether gold ore drops between two and six nuggets");
+            player.IsCreative = true;
+            player.Inventory.Slots[0] = null;
         }
 
         private IEnumerator DoorChecks()

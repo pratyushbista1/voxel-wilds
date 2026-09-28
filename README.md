@@ -6,11 +6,11 @@ Models are original, editable Blender assets.
 
 ## Play on Windows
 
-Extract `Voxel-Wilds-Unity-Portable-2.0.4.zip` into a new folder, then run `Voxel Wilds.exe`.
+Extract `Voxel-Wilds-Unity-Portable-2.0.6.zip` into a new folder, then run `Voxel Wilds.exe`.
 Keep the executable, `Voxel Wilds_Data`, `UnityPlayer.dll` and the other packaged
 files together. The executable alone is not a portable game.
 
-The setup edition is `Voxel-Wilds-Unity-Setup-2.0.4.exe`. It installs a Start menu
+The setup edition is `Voxel-Wilds-Unity-Setup-2.0.6.exe`. It installs a Start menu
 shortcut and an uninstaller. Builds are unsigned, so Windows may show a publisher
 warning. Check the download against `UNITY-PACKAGES-SHA256.txt` before sharing it.
 The installed edition saves to `%APPDATA%/VoxelWildsUnity/saves/` when launched
@@ -45,6 +45,18 @@ keyboard. Old 1.2.0 builds are separate from the Unity edition.
 
 There is no automatic block jumping. Death drops carried items and respawns the
 player after three seconds. There are no respawn or teleport-to-spawn buttons.
+
+Hold left mouse to mine. Ten pixel-crack stages appear directly on the targeted
+block, with a repeating hand or tool swing and textured fragments. Releasing the
+button, changing targets or tools, opening inventory, or pausing clears the damage.
+Survival mining uses tool-dependent hardness and slower digging while airborne or
+with your head underwater. Creative breaks immediately, with a short repeat delay;
+swords do not break blocks in Creative. There is no mining progress bar.
+
+The first dragon victory opens an original ending screen. Choose **Keep exploring**
+to stay in the End, or **Save & title** to leave safely. Esc also returns to play.
+Completed worlds do not replay the ending when loaded. Automatic death respawning
+is unchanged.
 
 ## Worlds and survival
 
@@ -198,6 +210,12 @@ A non-writable location falls back to Unity's per-user application data director
 The `-voxel-saves <directory>` launch argument selects a different save directory.
 
 Autosave runs every twenty seconds of active play and when pausing or quitting.
+Periodic autosave writes run in the background from an immutable snapshot; explicit
+saves and world changes wait for earlier writes so an older snapshot cannot replace
+a newer save. Terrain meshes are built in small work slices during play, with block
+edits prioritized and old collision geometry kept until its replacement is ready.
+See [performance measurements](PERFORMANCE.md) for the renderer comparison and its
+limits; those CPU timings are not a promised frame rate.
 Each successful replacement retains a checked `.bak` file. Corrupt primary files
 can load from the backup; damaged originals are retained separately when saving.
 Do not run two copies against the same world files.
@@ -231,6 +249,8 @@ Full local validation and building:
 ./scripts/test-player.ps1
 ./scripts/test-graphics.ps1
 ./scripts/test-interactions.ps1
+./scripts/test-performance.ps1
+./scripts/test-ending.ps1 -Visible
 ./scripts/test-inventory.ps1 -Visible
 ./scripts/package-unity.ps1
 ./scripts/test-unity-installer.ps1

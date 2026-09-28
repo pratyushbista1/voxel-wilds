@@ -77,23 +77,26 @@ namespace VoxelWilds
             if (Kind == MobKind.Enderman) TickEnderman(dt, wet);
             Vector3 target = Game.Player.transform.position;
             float distance = Vector3.Distance(target, transform.position);
-            bool seesPlayer = !Game.Player.Dead && !Game.Player.IsCreative && distance < 26 && director.LineClear(transform.position + Vector3.up * Definition.Height * .8f, Game.Player.Eye.transform.position);
-            bool chase = IsHostile && (seesPlayer || Anger > 0 && distance < 40) && !Game.Player.Dead && !Game.Player.IsCreative;
+            bool hostile = IsHostile;
+            bool seesPlayer = hostile && !Game.Player.Dead && !Game.Player.IsCreative && distance < 26 && director.LineClear(transform.position + Vector3.up * Definition.Height * .8f, Game.Player.Eye.transform.position);
+            bool chase = hostile && (seesPlayer || Anger > 0 && distance < 40) && !Game.Player.Dead && !Game.Player.IsCreative;
             if (Kind == MobKind.Villager)
             {
-                foreach (var threat in director.Actors)
+                for (int i = 0; i < director.Actors.Count; i++)
                 {
-                    if (threat == this || threat.Dead || !threat.IsHostile) continue;
+                    var threat = director.Actors[i];
+                    if (threat == this || threat.Dead) continue;
                     float threatDistance = Vector3.Distance(threat.transform.position, transform.position);
-                    if (threatDistance > 8 || !director.LineClear(transform.position + Vector3.up, threat.transform.position + Vector3.up)) continue;
+                    if (threatDistance > 8 || !threat.IsHostile || !director.LineClear(transform.position + Vector3.up, threat.transform.position + Vector3.up)) continue;
                     target = threat.transform.position; distance = threatDistance; panic = 2; break;
                 }
             }
             MobActor villager = null;
             if (Kind == MobKind.Zombie && (!chase || distance > 12))
             {
-                foreach (var actor in director.Actors)
+                for (int i = 0; i < director.Actors.Count; i++)
                 {
+                    var actor = director.Actors[i];
                     if (actor == this || actor.Dead || actor.Kind != MobKind.Villager) continue;
                     float d = Vector3.Distance(actor.transform.position, transform.position);
                     if (d >= Mathf.Min(distance, 12) || !director.LineClear(transform.position + Vector3.up, actor.transform.position + Vector3.up)) continue;
@@ -173,10 +176,14 @@ namespace VoxelWilds
                 if (direction.magnitude > .7f) { desired = direction.normalized * Definition.Speed * .55f; Turn(direction, dt * 5); }
             }
             if (wet) desired *= .55f;
-            foreach (var neighbor in director.Actors)
+            Vector3 separationPosition = transform.position;
+            for (int i = 0; i < director.Actors.Count; i++)
             {
-                if (neighbor == this || neighbor.Dead || Mathf.Abs(neighbor.transform.position.y - transform.position.y) > 1) continue;
-                Vector3 apart = Flat(transform.position - neighbor.transform.position);
+                var neighbor = director.Actors[i];
+                if (neighbor == this || neighbor.Dead) continue;
+                Vector3 neighborPosition = neighbor.transform.position;
+                if (Mathf.Abs(neighborPosition.y - separationPosition.y) > 1) continue;
+                Vector3 apart = Flat(separationPosition - neighborPosition);
                 float separation = Definition.Radius + neighbor.Definition.Radius;
                 if (apart.sqrMagnitude > .0001f && apart.sqrMagnitude < separation * separation)
                     desired += apart.normalized * Mathf.Min(1.5f, (separation - apart.magnitude) * 3);
@@ -309,8 +316,9 @@ namespace VoxelWilds
             Turn(facing, dt * 1.3f);
             MobActor crystal = null;
             float nearest = 42;
-            foreach (var candidate in director.Actors)
+            for (int i = 0; i < director.Actors.Count; i++)
             {
+                var candidate = director.Actors[i];
                 if (candidate.Dead || candidate.Kind != MobKind.EndCrystal) continue;
                 float distance = Vector3.Distance(candidate.transform.position, transform.position);
                 if (distance < nearest) { nearest = distance; crystal = candidate; }

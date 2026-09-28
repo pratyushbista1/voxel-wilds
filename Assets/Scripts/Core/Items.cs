@@ -147,19 +147,21 @@ namespace VoxelWilds.Core
         }
         public static bool CanHarvest(int tool, Block block)
         {
-            if (float.IsInfinity(Blocks.Hardness(block))) return false;
-            if (!RequiresPick(block)) return true;
+            if (block == Block.Air || float.IsInfinity(Blocks.Hardness(block))) return false;
+            if (block == Block.Snow) return tool == IronShovel;
+            if (!RequiresPick(block) && block != Block.Lantern) return true;
             int needed = block == Block.Obsidian ? 4 : block == Block.CrystalOre || block == Block.GoldBlock ? 3 : block == Block.IronOre ? 2 : 1;
             return MiningTier(tool) >= needed;
         }
         public static float MiningSpeed(int tool, Block block)
         {
-            if (RequiresPick(block))
+            if (RequiresPick(block) || block == Block.Lantern)
             {
                 switch (tool) { case WoodenPickaxe: return 2; case StonePickaxe: return 4; case IronPickaxe: return 6; case CrystalPickaxe: return 8; }
             }
-            if (tool == IronAxe && (block == Block.Log || block == Block.Planks || block == Block.Workbench || block == Block.Chest || block == Block.Door)) return 6;
+            if (tool == IronAxe && (block == Block.Log || block == Block.Planks || block == Block.Workbench || block == Block.Chest || block == Block.Door || block == Block.Campfire || Blocks.IsBed(block))) return 6;
             if (tool == IronShovel && (block == Block.Grass || block == Block.Dirt || block == Block.Sand || block == Block.Gravel || block == Block.Snow || block == Block.Clay || block == Block.SoulSand || block == Block.Farmland)) return 6;
+            if (tool == IronHoe && block == Block.Leaves) return 6;
             if ((tool == IronSword || tool == CrystalSword) && (block == Block.Leaves || block == Block.Wool)) return 1.5f;
             return 1;
         }

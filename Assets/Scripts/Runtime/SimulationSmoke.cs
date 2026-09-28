@@ -355,6 +355,8 @@ namespace VoxelWilds
             Require(dragon.Health <= withoutCrystals + .01f, "The dragon stops regenerating after its crystals are destroyed");
             Require(dragon.Hurt(500, game.Player.transform.position), "Dragon can take a lethal final hit");
             Require(game.EndDragonDefeated && game.Mobs.DragonHealth == 0, "Dragon death records victory and unlocks the exit");
+            Require(game.Ending && !game.Playing, "Dragon victory pauses gameplay for the ending screen");
+            game.ContinueAfterEnding();
             Cell endEdit = new Cell(9, 50, 9);
             game.World.Set(endEdit, Block.GoldBlock);
             Require(game.SaveWorld(), "Defeated End dimension saves");

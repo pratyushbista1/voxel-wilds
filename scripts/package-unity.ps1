@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '2.0.4',
+    [string]$Version = '2.0.6',
     [string]$Compiler
 )
 $ErrorActionPreference = 'Stop'
@@ -73,7 +73,7 @@ foreach ($file in ($files | Sort-Object FullName)) {
     $records.Add([ordered]@{ Path = $relative; Bytes = $file.Length; Sha256 = $checksum })
     $originalPaths[$relative] = $file.FullName
 }
-foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'Legal\Unity-Player-Windows-Mono-6000.3.23f1.pdf')) {
+foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'PERFORMANCE.md', 'Legal\Unity-Player-Windows-Mono-6000.3.23f1.pdf')) {
     $document = Get-Item -LiteralPath (Join-Path $gameRoot $name)
     if ($document.PSIsContainer -or ($document.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Release document is not a regular file: $name" }
     $destination = Join-Path $payloadRoot $name

@@ -58,7 +58,7 @@ namespace VoxelWilds
         {
             if (IsSwinging) return;
             action = nextAction;
-            swingDuration = action == Action.Mine ? .29f : action == Action.Use ? .24f : .34f;
+            swingDuration = action == Action.Use ? .24f : .30f;
             SwingProgress = 0;
         }
 
@@ -93,6 +93,8 @@ namespace VoxelWilds
             float t = SwingProgress;
             float strike = Mathf.Sin(t * Mathf.PI);
             float arc = Mathf.Sin(Mathf.Sqrt(t) * Mathf.PI);
+            float lift = Mathf.Sin(Mathf.Sqrt(t) * Mathf.PI * 2);
+            float recovery = Mathf.Sin(t * t * Mathf.PI);
             float bobX = Mathf.Sin(gait) * .012f * walkWeight;
             float bobY = (Mathf.Abs(Mathf.Cos(gait)) - .5f) * .010f * walkWeight;
             Vector3 position = new Vector3(.33f + bobX - sway.x, -.27f + bobY - sway.y - lowering * .46f, .60f - lowering * .10f);
@@ -103,12 +105,16 @@ namespace VoxelWilds
                 position += new Vector3(-strike * .035f, strike * .035f, strike * .095f);
                 rotation += new Vector3(-strike * 15, strike * 8, strike * 6);
             }
+            else if (PresentedItem == 0)
+            {
+                position += new Vector3(-arc * .16f, lift * .035f - strike * .04f, strike * .16f);
+                rotation += new Vector3(arc * 23, -arc * 26, -arc * 15);
+            }
             else
             {
-                float strength = action == Action.Mine ? .78f : 1;
-                position += new Vector3(-arc * .17f, -strike * .055f, strike * .06f) * strength;
-                rotation += new Vector3(strike * 10, -arc * 18, -arc * 20) * strength;
-                gripRotation += new Vector3(strike * 40, -arc * 6, -arc * 12) * strength;
+                position += new Vector3(-arc * .15f, lift * .045f - strike * .035f, strike * .045f);
+                rotation += new Vector3(arc * 18, -arc * 18, -arc * 16);
+                gripRotation += new Vector3(arc * 56, -recovery * 14, -arc * 32);
             }
             eatTime = eating ? eatTime + dt : 0;
             if (eating)

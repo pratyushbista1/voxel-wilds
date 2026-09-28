@@ -7,11 +7,16 @@ namespace VoxelWilds
     {
         public Camera Eye { get; private set; }
         public FirstPersonView View { get; private set; }
+        public BlockBreakOverlay BreakOverlay { get; private set; }
+        public BlockBreakParticles BreakParticles { get; private set; }
         public Inventory Inventory = new Inventory();
         public bool IsCreative, Flying;
         public float Health = 20, Hunger = 20, Air = 10, Saturation = 5;
         public bool Dead => Health <= 0;
-        public float MiningProgress { get; private set; }
+        public float MiningProgress => miningState.Progress;
+        public bool MiningActive => miningState.Active;
+        public Block MiningBlock => miningState.Block;
+        public Cell MiningTarget => miningState.Target;
         public bool HasTarget { get; private set; }
         public Cell Target { get; private set; }
         public Cell Adjacent { get; private set; }
@@ -26,10 +31,22 @@ namespace VoxelWilds
         private CharacterController controller;
         private Vector3 velocity, planarVelocity;
         private float hitCooldown, attackCooldown, useCooldown, regeneration, foodTimer, hazardTimer, fallStart, previousSpace, bowCharge;
-        private Cell mining;
+        private readonly MiningState miningState = new MiningState();
+        private ItemStack miningTool;
+        private int miningSlot = -1, miningToolIdentity;
         private int lastUseItem;
         private float gait, cameraWalkWeight, sprintViewWeight;
         private LineRenderer selection;
+        private static readonly Vector3[] outlineCorners = {
+            new Vector3(0,0,0),new Vector3(1,0,0),new Vector3(1,0,1),new Vector3(0,0,1),
+            new Vector3(0,0,0),new Vector3(0,1,0),new Vector3(1,1,0),new Vector3(1,0,0),
+            new Vector3(1,1,0),new Vector3(1,1,1),new Vector3(1,0,1),new Vector3(1,1,1),
+            new Vector3(0,1,1),new Vector3(0,0,1),new Vector3(0,1,1),new Vector3(0,1,0)
+        };
+        private readonly Vector3[] outlinePoints = new Vector3[16];
+        private Cell outlinedCell;
+        private Voxel outlinedVoxel;
+        private bool hasOutline;
         public void Init(GameSession session)
         {
             game=session;
@@ -37,19 +54,23 @@ namespace VoxelWilds
             var cameraObject=new GameObject("Eyes");cameraObject.transform.SetParent(transform,false);cameraObject.transform.localPosition=new Vector3(0,1.62f,0);
             Eye=cameraObject.AddComponent<Camera>();Eye.clearFlags=CameraClearFlags.SolidColor;Eye.nearClipPlane=.055f;Eye.farClipPlane=200;Eye.tag="MainCamera";cameraObject.AddComponent<AudioListener>();
             View=cameraObject.AddComponent<FirstPersonView>();View.Init(this,game.Renderer);
+            BreakOverlay=new GameObject("Block cracks").AddComponent<BlockBreakOverlay>();BreakOverlay.Init(game.World);
+            BreakParticles=new GameObject("Block fragments").AddComponent<BlockBreakParticles>();BreakParticles.Init(game);
             var outline=new GameObject("Target outline");selection=outline.AddComponent<LineRenderer>();selection.material=new Material(Shader.Find("Sprites/Default"));selection.startColor=selection.endColor=new Color(.08f,.10f,.1f,.8f);selection.startWidth=selection.endWidth=.012f;selection.positionCount=16;selection.useWorldSpace=true;
         }
         public void Teleport(Vector3 position)
         {
             foodTimer=bowCharge=0;
-            controller.enabled=false;transform.position=position;controller.enabled=true;velocity=planarVelocity=Vector3.zero;fallStart=position.y;MiningProgress=0;gait=cameraWalkWeight=sprintViewWeight=0;HorizontalSpeed=0;Grounded=WalkingOnGround=IsSprinting=false;View.ResetMotion();Eye.transform.localPosition=new Vector3(0,1.62f,0);Eye.fieldOfView=game.Settings.FieldOfView;Physics.SyncTransforms();
+            ResetMining();HasTarget=false;selection.enabled=false;
+            BreakOverlay.Init(game.World);BreakParticles.Init(game);
+            controller.enabled=false;transform.position=position;controller.enabled=true;velocity=planarVelocity=Vector3.zero;fallStart=position.y;gait=cameraWalkWeight=sprintViewWeight=0;HorizontalSpeed=0;Grounded=WalkingOnGround=IsSprinting=false;View.ResetMotion();Eye.transform.localPosition=new Vector3(0,1.62f,0);Eye.fieldOfView=game.Settings.FieldOfView;Physics.SyncTransforms();
         }
         public void ResetVitals(){Health=Hunger=20;Air=10;Saturation=5;hitCooldown=1;foodTimer=hazardTimer=regeneration=0;Flying=false;}
         private void Update()
         {
             if(game==null || game.World==null)return;
             float dt=Mathf.Min(Time.deltaTime,.1f);hitCooldown-=dt;attackCooldown-=dt;useCooldown-=dt;
-            if(!game.Playing){selection.enabled=false;foodTimer=bowCharge=0;return;}
+            if(!game.Playing){ResetMining();HasTarget=false;selection.enabled=false;foodTimer=bowCharge=0;return;}
             var feet=ToCell(transform.position+Vector3.up*.1f);Block fluid=game.World.GetBlock(feet);
             InWater=fluid==Block.Water;bool swimming=InWater||fluid==Block.Lava;
             bool control=!game.Hud.IsOpen;
@@ -73,10 +94,10 @@ namespace VoxelWilds
             float walkedDistance=StepMovement(dt,input,Input.GetKey(KeyCode.LeftControl),Input.GetKey(KeyCode.LeftShift),Input.GetKeyDown(KeyCode.Space),Input.GetKey(KeyCode.Space),control,swimming,usingItem);
             Vitals(dt,HorizontalSpeed,fluid);
             if(transform.position.y < -20)Damage(100,transform.position);
-            if(!control){MiningProgress=0;HasTarget=false;selection.enabled=false;bowCharge=foodTimer=0;AnimateHand(dt,0,false,Vector2.zero,false);return;}
+            if(!control){ResetMining();HasTarget=false;selection.enabled=false;bowCharge=foodTimer=0;AnimateHand(dt,0,false,Vector2.zero,false);return;}
             HasTarget=Trace(Eye.transform.position,Eye.transform.forward,IsCreative?6:4.5f,out var hit,out var previous,Inventory.Held?.Id==Items.EmptyBucket);
             Target=hit;Adjacent=previous;DrawSelection();
-            if(Input.GetMouseButton(0))MineOrAttack(dt);else MiningProgress=0;
+            if(Input.GetMouseButton(0))MineOrAttack(dt);else ResetMining();
             if(Input.GetMouseButtonDown(2)&&IsCreative&&HasTarget){int id=(int)game.World.GetBlock(Target);Inventory.Slots[Inventory.Selected]=new ItemStack(id,Items.MaxStack(id));}
             int item=Inventory.Held?.Id??0;
             if(item!=lastUseItem||!Input.GetMouseButton(1))foodTimer=0;
@@ -215,23 +236,58 @@ namespace VoxelWilds
         }
         private void MineOrAttack(float dt)
         {
-            if(attackCooldown<=0 && game.Mobs.Attack(new Ray(Eye.transform.position,Eye.transform.forward),IsCreative?6:3.3f,Items.AttackDamage(Inventory.Held?.Id??0)))
-            {attackCooldown=.55f;View.TriggerSwing(FirstPersonView.Action.Attack);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(ItemUseRules.AttackWear(Inventory.Held?.Id??0));return;}
-            if(!HasTarget){MiningProgress=0;View.TriggerSwing(FirstPersonView.Action.Attack);return;}
-            if(Target!=mining){mining=Target;MiningProgress=0;}
-            Block id=game.World.GetBlock(Target);float hardness=Blocks.Hardness(id);
-            View.TriggerSwing(FirstPersonView.Action.Mine);
-            if(float.IsInfinity(hardness))return;
-            float duration=IsCreative?.12f:Mathf.Max(.1f,hardness*(Items.CanHarvest(Inventory.Held?.Id??0,id)?1.5f:5)/Items.MiningSpeed(Inventory.Held?.Id??0,id));
-            MiningProgress+=dt/duration;
-            if(MiningProgress>=1){int tool=Inventory.Held?.Id??0;game.BreakBlock(Target);MiningProgress=0;if(!IsCreative)Inventory.WearSelected(ItemUseRules.MiningWear(tool));}
+            var ray=new Ray(Eye.transform.position,Eye.transform.forward);
+            float reach=IsCreative?6:3.3f;
+            if(HasTarget&&BlockShape.Bounds(Target,game.World.Get(Target)).IntersectRay(ray,out float blockDistance))reach=Mathf.Min(reach,blockDistance);
+            if(attackCooldown<=0 && game.Mobs.Attack(ray,reach,Items.AttackDamage(Inventory.Held?.Id??0)))
+            {attackCooldown=.55f;View.TriggerSwing(FirstPersonView.Action.Attack);ResetMining();if(!IsCreative)Inventory.WearSelected(ItemUseRules.AttackWear(Inventory.Held?.Id??0));return;}
+            StepMining(dt,true,HasTarget,Target,Grounded,game.World.GetBlock(ToCell(Eye.transform.position))==Block.Water);
+            View.TriggerSwing(HasTarget?FirstPersonView.Action.Mine:FirstPersonView.Action.Attack);
+        }
+        public void ResetMining()
+        {
+            miningState.Reset();
+            BreakOverlay?.Hide();
+            miningTool=null;
+            miningSlot=-1;
+        }
+        public bool StepMining(float dt,bool held,bool hasTarget,Cell target,bool grounded,bool headSubmerged)
+        {
+            if(game==null||game.World==null){ResetMining();return false;}
+            var stack=Inventory.Held;
+            if(!ReferenceEquals(stack,miningTool)||Inventory.Selected!=miningSlot)
+            {
+                miningTool=stack;
+                miningSlot=Inventory.Selected;
+                miningToolIdentity++;
+            }
+            Block block=hasTarget?game.World.GetBlock(target):Block.Air;
+            int tool=stack?.Id??0;
+            bool broken=miningState.Step(dt,held,hasTarget,target,block,tool,IsCreative,grounded,headSubmerged,miningToolIdentity);
+            if(MiningActive&&MiningProgress>0)
+            {
+                Voxel voxel=game.World.Get(MiningTarget);
+                BreakOverlay.Show(MiningTarget,voxel,MiningProgress);
+                var ray=new Ray(Eye.transform.position,Eye.transform.forward);
+                if(BlockShape.Bounds(MiningTarget,voxel).IntersectRay(ray,out float distance))BreakParticles.Hit(MiningTarget,voxel,ray.GetPoint(distance));
+            }
+            else BreakOverlay.Hide();
+            if(!broken)return false;
+            game.BreakBlock(target);
+            if(game.World.GetBlock(target)==block)return false;
+            if(!IsCreative&&Blocks.Hardness(block)>0)Inventory.WearSelected(ItemUseRules.MiningWear(tool));
+            return true;
         }
         public bool Trace(Vector3 origin,Vector3 direction,float range,out Cell hit,out Cell previous,bool fluids=false)
         {
             previous=ToCell(origin);hit=previous;
+            Cell sampledCell=previous;
+            Voxel voxel=game.World.Get(sampledCell);
             for(float distance=0;distance<=range;distance+=.025f)
             {
-                Vector3 point=origin+direction*distance;Cell cell=ToCell(point);Voxel voxel=game.World.Get(cell);Block id=voxel.Id;
+                Vector3 point=origin+direction*distance;Cell cell=ToCell(point);
+                if(!cell.Equals(sampledCell)){sampledCell=cell;voxel=game.World.Get(cell);}
+                Block id=voxel.Id;
                 if(id==Block.Door&&!DoorRules.Contains(voxel,point.x-cell.X,point.y-cell.Y,point.z-cell.Z)){previous=cell;continue;}
                 if(Blocks.IsBed(id)&&point.y-cell.Y>BedRules.Height){previous=cell;continue;}
                 if(id!=Block.Air && (fluids||!Blocks.IsFluid(id)) && id!=Block.PortalX&&id!=Block.PortalZ&&id!=Block.EndPortal){hit=cell;return true;}
@@ -254,11 +310,15 @@ namespace VoxelWilds
         private void DrawSelection()
         {
             selection.enabled=HasTarget;if(!HasTarget)return;
-            Bounds bounds=BlockShape.Bounds(Target,game.World.Get(Target));Vector3 p=bounds.min-Vector3.one*.003f,size=bounds.size+Vector3.one*.006f;
-            Vector3[] points={new Vector3(0,0,0),new Vector3(1,0,0),new Vector3(1,0,1),new Vector3(0,0,1),new Vector3(0,0,0),new Vector3(0,1,0),new Vector3(1,1,0),new Vector3(1,0,0),new Vector3(1,1,0),new Vector3(1,1,1),new Vector3(1,0,1),new Vector3(1,1,1),new Vector3(0,1,1),new Vector3(0,0,1),new Vector3(0,1,1),new Vector3(0,1,0)};
-            for(int i=0;i<points.Length;i++)selection.SetPosition(i,p+Vector3.Scale(points[i],size));
+            Voxel voxel=game.World.Get(Target);
+            if(hasOutline&&outlinedCell.Equals(Target)&&outlinedVoxel.Equals(voxel))return;
+            Bounds bounds=BlockShape.Bounds(Target,voxel);Vector3 p=bounds.min-Vector3.one*.003f,size=bounds.size+Vector3.one*.006f;
+            for(int i=0;i<outlinePoints.Length;i++)outlinePoints[i]=p+Vector3.Scale(outlineCorners[i],size);
+            selection.SetPositions(outlinePoints);
+            outlinedCell=Target;outlinedVoxel=voxel;hasOutline=true;
         }
         public static Cell ToCell(Vector3 p)=>new Cell(Mathf.FloorToInt(p.x),Mathf.FloorToInt(p.y),Mathf.FloorToInt(p.z));
-        private void OnDestroy(){if(selection)Destroy(selection.gameObject);}
+        private void OnDisable(){ResetMining();BreakParticles?.Clear();if(selection)selection.enabled=false;}
+        private void OnDestroy(){if(selection){Destroy(selection.sharedMaterial);Destroy(selection.gameObject);}if(BreakOverlay)Destroy(BreakOverlay.gameObject);if(BreakParticles)Destroy(BreakParticles.gameObject);}
     }
 }
